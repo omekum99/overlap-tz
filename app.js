@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
   bindScrubber();
   bindMeetingDialog();
   setupComboboxes();
+  $('boardInner').title = 'Double-click to block / schedule time';
 
   window.addEventListener('hashchange', () => {
     state = decodeState(readHash());
@@ -162,6 +163,18 @@ function bindScrubber() {
   });
   inner.addEventListener('pointermove', e => { if (dragging) setFromX(e.clientX); });
   inner.addEventListener('pointerup', () => { dragging = false; });
+
+  // Double-click the calendar to block / schedule time at that moment.
+  inner.addEventListener('dblclick', e => {
+    if (e.target.closest('.tl-label')) return;
+    const rect = inner.getBoundingClientRect();
+    const x = e.clientX - rect.left - cssNum('--label-w');
+    if (x < 0) return;
+    let h = Math.min(23.5, Math.max(0, x / cssNum('--hour-w')));
+    h = Math.round(h * 2) / 2;                 // snap to 30 min
+    const scope = currentScopeWorking();
+    openMeetingDialog(h, +$('duration').value, scope.map(m => m.name), 'Blocked');
+  });
   $('scrubber').addEventListener('keydown', e => {
     if (e.key === 'ArrowRight') { scrubHour = mod24(scrubHour + 0.25); updateScrub(); }
     if (e.key === 'ArrowLeft')  { scrubHour = mod24(scrubHour - 0.25); updateScrub(); }
@@ -175,6 +188,25 @@ function positionMarkers() {
   if (isTodayISO(refDate, homeTz)) { now.style.display = ''; now.style.left = xForHour(nowAxisHour(homeTz)) + 'px'; }
   else now.style.display = 'none';
   $('scrubber').style.left = xForHour(scrubHour) + 'px';
+  renderBlocks();
+}
+
+// Translucent spans on the timeline for meetings on the selected date.
+function renderBlocks() {
+  const inner = $('boardInner');
+  inner.querySelectorAll('.block-span').forEach(e => e.remove());
+  const hw = cssNum('--hour-w'), lw = cssNum('--label-w');
+  for (const m of meetings) {
+    const dt = DateTime.fromISO(m.startUTC).setZone(homeTz);
+    if (dt.toISODate() !== refDate) continue;
+    const startAxis = dt.hour + dt.minute / 60;
+    const el = document.createElement('div');
+    el.className = 'block-span';
+    el.style.left = (lw + startAxis * hw) + 'px';
+    el.style.width = (m.durationMin / 60 * hw) + 'px';
+    el.innerHTML = `<span>${esc(m.title)}</span>`;
+    inner.appendChild(el);
+  }
 }
 
 function updateScrub() {
@@ -241,6 +273,30 @@ function renderPlannerScope() {
   sel.value = plannerScope;
 }
 
+function currentScopeWorking() {
+  return state.members.filter(m => (!plannerScope || m.teamId === plannerScope) && !isMemberOff(m, refDate));
+}
+// 15-min occupancy of saved meetings on the selected date (in home tz).
+function busyCellsForDate() {
+  const cells = new Array(96).fill(false);
+  for (const m of meetings) {
+    const dt = DateTime.fromISO(m.startUTC).setZone(homeTz);
+    if (dt.toISODate() !== refDate) continue;
+    markCells(cells, dt.hour + dt.minute / 60, m.durationMin / 60);
+  }
+  return cells;
+}
+function markCells(cells, startH, durH) {
+  const n = Math.max(1, Math.round(durH / 0.25)), s0 = Math.round(startH / 0.25);
+  for (let i = 0; i < n; i++) cells[(((s0 + i) % 96) + 96) % 96] = true;
+}
+function slotIsBusy(startH, durH, cells) {
+  const n = Math.max(1, Math.round(durH / 0.25)), s0 = Math.round(startH / 0.25);
+  for (let i = 0; i < n; i++) if (cells[(((s0 + i) % 96) + 96) % 96]) return true;
+  return false;
+}
+function refreshPlanner() { renderPlanner(); positionMarkers(); }
+
 function renderPlanner() {
   const scope = state.members.filter(m => !plannerScope || m.teamId === plannerScope);
   const working = scope.filter(m => !isMemberOff(m, refDate));
@@ -256,7 +312,9 @@ function renderPlanner() {
   if (windows.length === 0) { box.innerHTML = offNote + '<p class="no-overlap small">No shared time today. Try a sub-team or another date.</p>'; return; }
 
   const durMin = +$('duration').value;
-  const slots = generateSlots(windows, durMin / 60);
+  const busy = busyCellsForDate();
+  const slots = generateSlots(windows, durMin / 60).filter(s => !slotIsBusy(s.start, durMin / 60, busy));
+  const blockedCount = meetings.filter(m => DateTime.fromISO(m.startUTC).setZone(homeTz).toISODate() === refDate).length;
   const attendees = working.map(m => m.name);
 
   const top = windows.slice(0, 2).map((w, i) => {
@@ -268,11 +326,13 @@ function renderPlanner() {
       <table class="window-tbl">${rows}</table></div>`;
   }).join('');
 
+  const blockNote = blockedCount
+    ? `<p class="muted small">⛌ ${blockedCount} block${blockedCount > 1 ? 's' : ''} on this day reduce${blockedCount > 1 ? '' : 's'} availability.</p>` : '';
   const slotBtns = slots.length
     ? `<div class="slots"><span class="muted small">${durMin}-min slots:</span>${slots.map(s => `<button class="slot" data-start="${s.start}">${hourLabel(s.start)}</button>`).join('')}</div>`
-    : `<p class="muted small">No ${durMin}-min slot fits — try shorter.</p>`;
+    : `<p class="muted small">No free ${durMin}-min slot${blockedCount ? ' (time is blocked)' : ''} — try shorter or another date.</p>`;
 
-  box.innerHTML = offNote + top + slotBtns;
+  box.innerHTML = offNote + blockNote + top + slotBtns;
   box.querySelectorAll('.slot').forEach(b => b.addEventListener('click', () => openMeetingDialog(+b.dataset.start, durMin, attendees)));
 }
 
@@ -303,7 +363,7 @@ function renderMeetings() {
   box.querySelectorAll('[data-medit]').forEach(b => b.addEventListener('click', () => editMeeting(b.dataset.medit)));
   box.querySelectorAll('[data-mbook]').forEach(b => b.addEventListener('click', () => { const m = find(b.dataset.mbook); m.status = m.status === 'booked' ? 'proposed' : 'booked'; persistMeetings(); renderMeetings(); }));
   box.querySelectorAll('[data-mics]').forEach(b => b.addEventListener('click', () => downloadIcs(find(b.dataset.mics))));
-  box.querySelectorAll('[data-mdel]').forEach(b => b.addEventListener('click', () => { meetings = meetings.filter(x => x.id !== b.dataset.mdel); persistMeetings(); renderMeetings(); }));
+  box.querySelectorAll('[data-mdel]').forEach(b => b.addEventListener('click', () => { meetings = meetings.filter(x => x.id !== b.dataset.mdel); persistMeetings(); renderMeetings(); refreshPlanner(); }));
 }
 
 // ── meeting dialog ─────────────────────────────────────────────────────────────
@@ -321,15 +381,15 @@ function bindMeetingDialog() {
     if (editingMeetingId) Object.assign(meetings.find(x => x.id === editingMeetingId), data);
     else meetings.push(makeMeeting(data));
     pendingMeeting = editingMeetingId = null;
-    persistMeetings(); renderMeetings(); toast('💾 Meeting saved on this device.');
+    persistMeetings(); renderMeetings(); refreshPlanner(); toast('💾 Saved on this device.');
   });
 }
-function openMeetingDialog(slotStart, durationMin, attendees) {
+function openMeetingDialog(slotStart, durationMin, attendees, title = '') {
   pendingMeeting = { startUTC: axisInstant(slotStart, refDate, homeTz).toUTC().toISO(), durationMin, attendees };
   editingMeetingId = null;
-  $('meetingDialogTitle').textContent = 'New meeting';
+  $('meetingDialogTitle').textContent = title ? 'Block / schedule time' : 'New meeting';
   $('meetingWhen').textContent = `${prettyDate(refDate)} · ${hourLabel(slotStart)}–${hourLabel(slotStart + durationMin / 60)} (${labelForTz(homeTz)})`;
-  $('meetingTitle').value = ''; $('meetingAttendees').value = attendees.join(', '); $('meetingNotes').value = '';
+  $('meetingTitle').value = title; $('meetingAttendees').value = attendees.join(', '); $('meetingNotes').value = '';
   $('meetingDialog').showModal();
 }
 function editMeeting(id) {
