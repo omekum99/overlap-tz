@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Timezones — shareable team clock</title>
+  <meta name="description" content="See your whole distributed team on one 24h timeline. No login, no server — the whole workspace lives in the URL." />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🕒</text></svg>" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🕒</span>
+      <input id="org" class="org" placeholder="Name your workspace…" maxlength="40" />
+    </div>
+    <div class="topbar-right">
+      <span id="urlBadge" class="url-badge" title="Length of the shareable URL. Stay under ~2000 chars so chat apps don't truncate it."></span>
+      <button id="shareBtn" class="btn btn-primary">🔗 Share workspace</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ───────────── Board: 24h UTC axis + one lane per member ───────────── -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Team timeline</h2>
+        <div id="teamFilter" class="chips"></div>
+      </div>
+      <p class="hint">Drag the <b>scrubber</b> across the board to read everyone's local time at that instant. Green = inside working hours.</p>
+      <div id="board" class="board">
+        <div class="row axis">
+          <div class="lane-label axis-label"><span id="scrubReadout">UTC</span></div>
+          <div id="axisTrack" class="track axis-track"></div>
+        </div>
+        <div id="lanes"></div>
+        <div id="nowMarker" class="marker now" title="Now (UTC)"></div>
+        <div id="scrubber" class="marker scrub"></div>
+      </div>
+    </section>
+
+    <div class="two-col">
+      <!-- ───────────── Add / edit member ───────────── -->
+      <section class="panel">
+        <div class="panel-head"><h2 id="formTitle">Add a teammate</h2></div>
+        <form id="memberForm" class="form" autocomplete="off">
+          <label>Name
+            <input id="mName" required maxlength="30" placeholder="e.g. Sriram" />
+          </label>
+          <label>Timezone
+            <input id="mTz" list="zones" required placeholder="Start typing a city… e.g. Asia/Kolkata" />
+            <datalist id="zones"></datalist>
+          </label>
+          <div class="row-2">
+            <label>Start hour
+              <input id="mStart" type="number" min="0" max="23" value="9" required />
+            </label>
+            <label>End hour
+              <input id="mEnd" type="number" min="0" max="23" value="17" required />
+            </label>
+          </div>
+          <label class="checkbox">
+            <input id="mOvernight" type="checkbox" /> Overnight shift (end is next day)
+          </label>
+          <label>Team
+            <select id="mTeam"><option value="">— No team —</option></select>
+          </label>
+          <p id="formError" class="error" hidden></p>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="saveMemberBtn">Add teammate</button>
+            <button type="button" class="btn" id="cancelEditBtn" hidden>Cancel</button>
+            <button type="button" class="btn btn-ghost" id="dummyBtn" title="Add a random teammate for planning">🎲 Add dummy user</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- ───────────── Teams + Meeting planner ───────────── -->
+      <section class="panel">
+        <div class="panel-head"><h2>Sub-teams</h2></div>
+        <form id="teamForm" class="team-form">
+          <input id="teamName" maxlength="24" placeholder="New team (e.g. Marketing)" />
+          <button class="btn btn-primary" type="submit">+ Add team</button>
+        </form>
+        <ul id="teamList" class="team-list"></ul>
+
+        <div class="panel-head" style="margin-top:1.25rem"><h2>Meeting planner</h2></div>
+        <p class="hint">Best windows where <b id="plannerScopeName">everyone</b> is working at the same time.</p>
+        <div id="planner" class="planner"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    No account. No server. Your whole team lives in this link — copy the URL to share it.
+  </footer>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- Dependencies (CDN, no build step). Order matters: libs first, then our code. -->
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+  <script src="state.js"></script>
+  <script src="timeutil.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
