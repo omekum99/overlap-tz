@@ -28,8 +28,9 @@ python3 -m http.server 8000   # then visit http://localhost:8000
 
 ## Features
 
-- **24h timeline in *your* timezone** — defaults to your browser's zone (remembered), or
-  pick any zone. A live "now" marker shows the current time.
+- **24h timeline in *your* timezone** — defaults to your browser's zone (remembered). Use the
+  **🌐 Viewing in…** picker in the controls bar to re-base the whole board to any zone (search a
+  city or country); a live "now" marker shows the current time.
 - **Fits your screen** — the whole day is sized to the viewport by default (no page scroll);
   **−/+** zoom in for detail and the board scrolls, **Fit** snaps back. Scroll past the edge
   of the day to roll into the next/previous one.
@@ -101,7 +102,7 @@ python3 -m http.server 8000   # then visit http://localhost:8000
 |---------------|--------------------------------------------------------------------|
 | `index.html`  | Markup + loads the libraries and scripts                           |
 | `styles.css`  | All styling — the single design system + app-shell layout          |
-| `state.js`    | URL ↔ config: key-minify, lz-string compress/decompress, validate  |
+| `state.js`    | URL ↔ config: key-minify, lz-string compress/decompress, envelope+schema versioning, alias-tolerant zone validation |
 | `tzcities.js` | Friendly timezone search (city/country/alias → IANA)               |
 | `timeutil.js` | Timezone math: date/home-tz projection, scrubber, overlap, slots   |
 | `store.js`    | Private per-workspace meetings in localStorage                     |

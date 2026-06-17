@@ -349,6 +349,8 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 
 /* ── combobox (timezone search) ── */
 .combo { position: relative; display: flex; align-items: center; min-width: 200px; }
+.home-combo { min-width: 150px; max-width: 190px; }
+.home-combo .combo-input { padding-top: .3rem; padding-bottom: .3rem; font-size: .8rem; }
 .combo-icon { position: absolute; left: .55rem; pointer-events: none; opacity: .7; }
 .combo-input { width: 100%; padding-left: 1.9rem; padding-top: .42rem; padding-bottom: .42rem; font-size: .84rem; }
 .combo-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40; margin: 0; padding: 4px;
@@ -488,4 +490,14 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
   .board { height: 58vh; }
   .planner-strip { max-height: none; }
   .side { overflow: visible; }
+}
+
+/* ── respect users who ask for less motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -32,6 +32,7 @@ let plannerTeams = new Set();           // "Find a time" scope: team ids (empty 
 let plannerPeople = new Set();          // "Find a time" scope: specific member indices (overrides teams)
 let showBands = localStorage.getItem('tzclock.bands') !== '0';    // working-hour bands
 let dayNight = localStorage.getItem('tzclock.daynight') === '1';   // day/night gradient view
+let dayNightPalette = +(localStorage.getItem('tzclock.palette') ?? 1);  // which DN_PALETTES entry
 let compact = localStorage.getItem('tzclock.compact') === '1';     // dense rows
 let expandedPeople = new Set();                                    // per-person expanded lanes
 let povPerson = -1;                                                // person whose POV is shown (-1 = device tz)
@@ -60,6 +61,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // First-visit onboarding
   if (!localStorage.getItem('tzclock.onboarded')) showOnboarding();
 
+  if (!Number.isInteger(dayNightPalette) || dayNightPalette < 0 || dayNightPalette >= DN_PALETTES.length) dayNightPalette = 1;
+  $('paletteSelect').innerHTML = DN_PALETTES.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join('');
+  $('paletteSelect').value = String(dayNightPalette);
   document.documentElement.style.setProperty('--hour-w', zoom + 'px');
   const f12 = localStorage.getItem('tzclock.fmt12');
   if (f12 !== null) setHour12(f12 === '1');
@@ -99,6 +103,7 @@ function persistMeetings() { saveMeetings(state.wid, meetings); }
 function render() {
   $('org').value = state.org;
   $('datePick').value = refDate;
+  syncHomeCombo();
   // Sync toggle buttons
   toggleSync('bandsBtn', showBands);
   toggleSync('dayNightBtn', dayNight);
@@ -275,8 +280,8 @@ const DN_PALETTES = [
   ]},
 ];
 
-const DN_KEYS = DN_PALETTES[1].keys;  // Soft Gray
-function dnKeys() { return DN_KEYS; }
+// The active palette's gradient stops (Soft Gray is the default = index 1).
+function dnKeys() { return (DN_PALETTES[dayNightPalette] || DN_PALETTES[1]).keys; }
 function dnColor(h) {
   const keys = dnKeys();
   h = mod24(h);
@@ -670,7 +675,11 @@ function renderMeetings() {
   box.querySelectorAll('[data-medit]').forEach(b => b.addEventListener('click', () => editMeeting(b.dataset.medit)));
   box.querySelectorAll('[data-mbook]').forEach(b => b.addEventListener('click', () => { const m = find(b.dataset.mbook); m.status = m.status === 'booked' ? 'proposed' : 'booked'; persistMeetings(); renderMeetings(); }));
   box.querySelectorAll('[data-mics]').forEach(b => b.addEventListener('click', () => downloadIcs(find(b.dataset.mics))));
-  box.querySelectorAll('[data-mdel]').forEach(b => b.addEventListener('click', () => { meetings = meetings.filter(x => x.id !== b.dataset.mdel); persistMeetings(); renderMeetings(); refreshPlanner(); }));
+  box.querySelectorAll('[data-mdel]').forEach(b => b.addEventListener('click', () => {
+    const m = find(b.dataset.mdel);
+    if (m && !confirm(`Delete meeting "${m.title}"?`)) return;
+    meetings = meetings.filter(x => x.id !== b.dataset.mdel); persistMeetings(); renderMeetings(); refreshPlanner();
+  }));
 }
 
 // ── meeting dialog (date / time / length editable inline) ──────────────────────
@@ -744,25 +753,53 @@ function getDaysOff() { return [...document.querySelectorAll('#mDaysOff .day-tog
 // ── comboboxes (timezone search) ───────────────────────────────────────────────
 function setupComboboxes() {
   makeCombo($('mTz'), $('mTzList'), () => {});
+  makeCombo($('homeTz'), $('homeTzList'), setHomeTz);
+}
+
+// Explicitly view the whole board in a chosen zone. Unlike POV (which re-bases to
+// a teammate), this is just a viewer zone, so it cancels any active POV.
+function setHomeTz(tz) {
+  if (!isValidZone(tz)) return;
+  homeTz = tz;
+  povPerson = -1;
+  localStorage.setItem('tzclock.home', tz);
+  render();
+}
+// Keep the picker showing the current home zone, but never overwrite what the
+// user is actively typing into it.
+function syncHomeCombo() {
+  const el = $('homeTz');
+  if (el && document.activeElement !== el) { el.value = labelForTz(homeTz); el.dataset.tz = homeTz; }
 }
 function makeCombo(input, list, onPick) {
   let items = [], active = -1;
-  const open = () => { items = tzSearch(input.value, 8); active = -1; draw(); list.hidden = items.length === 0; };
-  const draw = () => {
-    list.innerHTML = items.map((it, i) => `<li class="cb-item ${i === active ? 'active' : ''}" data-i="${i}">${esc(it.label)}<span class="cb-tz">${esc(it.tz)}</span></li>`).join('');
+  const optId = i => `${list.id}-opt-${i}`;
+  const syncAria = () => {
+    const open = !list.hidden;
+    input.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open && active >= 0) input.setAttribute('aria-activedescendant', optId(active));
+    else input.removeAttribute('aria-activedescendant');
   };
-  const pick = it => { input.value = it.label; input.dataset.tz = it.tz; list.hidden = true; onPick(it.tz); };
-  input.addEventListener('input', open);
+  const open = () => { items = tzSearch(input.value, 8); active = -1; draw(); list.hidden = items.length === 0; syncAria(); };
+  const close = () => { list.hidden = true; syncAria(); };
+  const draw = () => {
+    list.innerHTML = items.map((it, i) => `<li id="${optId(i)}" role="option" aria-selected="${i === active}" class="cb-item ${i === active ? 'active' : ''}" data-i="${i}">${esc(it.label)}<span class="cb-tz">${esc(it.tz)}</span></li>`).join('');
+    syncAria();
+  };
+  const pick = it => { input.value = it.label; input.dataset.tz = it.tz; close(); onPick(it.tz); };
+  // Typing invalidates any previously-picked zone, so we never save a stale tz
+  // (pick "India", retype "London" without re-picking → must not save Kolkata).
+  input.addEventListener('input', () => { input.dataset.tz = ''; open(); });
   input.addEventListener('focus', open);
   input.addEventListener('keydown', e => {
     if (list.hidden) return;
     if (e.key === 'ArrowDown') { active = Math.min(active + 1, items.length - 1); draw(); e.preventDefault(); }
     else if (e.key === 'ArrowUp') { active = Math.max(active - 1, 0); draw(); e.preventDefault(); }
     else if (e.key === 'Enter') { if (items[active]) { pick(items[active]); e.preventDefault(); } }
-    else if (e.key === 'Escape') { list.hidden = true; }
+    else if (e.key === 'Escape') { close(); }
   });
   list.addEventListener('mousedown', e => { const li = e.target.closest('[data-i]'); if (li) { e.preventDefault(); pick(items[+li.dataset.i]); } });
-  input.addEventListener('blur', () => setTimeout(() => { list.hidden = true; }, 120));
+  input.addEventListener('blur', () => setTimeout(close, 120));
   return { resolve: () => input.dataset.tz || (tzSearch(input.value, 1)[0] || {}).tz || '' };
 }
 
@@ -788,6 +825,11 @@ function bindControls() {
     dayNight = !dayNight; localStorage.setItem('tzclock.daynight', dayNight ? '1' : '0');
     $('stage').classList.toggle('daynight-active', dayNight);
     toggleSync('dayNightBtn', dayNight); renderLanes(); positionMarkers(); updateScrub(); renderPlanner();
+  });
+  $('paletteSelect').addEventListener('change', e => {
+    dayNightPalette = +e.target.value;
+    localStorage.setItem('tzclock.palette', String(dayNightPalette));
+    if (dayNight) { renderLanes(); positionMarkers(); updateScrub(); }
   });
   $('compactBtn').addEventListener('click', () => {
     compact = !compact; localStorage.setItem('tzclock.compact', compact ? '1' : '0');
@@ -819,7 +861,12 @@ function bindControls() {
 
   $('memberForm').addEventListener('submit', onSubmitMember);
   $('dummyBtn').addEventListener('click', addDummy);
-  $('deleteMemberBtn').addEventListener('click', () => { if (editingIndex >= 0) { state.members.splice(editingIndex, 1); closeDrawer(); render(); } });
+  $('deleteMemberBtn').addEventListener('click', () => {
+    if (editingIndex < 0) return;
+    const m = state.members[editingIndex];
+    if (!confirm(`Remove ${m.name} from the team?`)) return;
+    state.members.splice(editingIndex, 1); closeDrawer(); render();
+  });
 
   $('teamForm').addEventListener('submit', e => {
     e.preventDefault();
@@ -873,6 +920,10 @@ function renderTeamList() {
   }).join('');
   ul.querySelectorAll('[data-delteam]').forEach(b => b.addEventListener('click', () => {
     const id = b.dataset.delteam;
+    const t = teamById(id);
+    const count = state.members.filter(m => m.teamId === id).length;
+    const note = count ? ` ${count} teammate${count > 1 ? 's' : ''} will move to Unassigned.` : '';
+    if (!confirm(`Delete team "${t ? t.name : ''}"?` + note)) return;
     state.teams = state.teams.filter(t => t.id !== id);
     state.members.forEach(m => { if (m.teamId === id) m.teamId = ''; });
     activeTeams.delete(id);
@@ -975,21 +1026,38 @@ function demoWorkspace() {
 }
 function parseTime(s) { const [h, m] = String(s).split(':').map(Number); return h + (m || 0) / 60; }
 function toTimeInput(f) { const h = Math.floor(f); return pad2(h) + ':' + pad2(Math.round((f - h) * 60)); }
-function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 // ── first-visit onboarding ────────────────────────────────────
 function showOnboarding() {
   const overlay = $('onboardOverlay');
   if (!overlay) return;
+  const modal = overlay.querySelector('.onboard-modal');
+  const prevFocus = document.activeElement;
   overlay.hidden = false;
+
   const dismiss = () => {
     overlay.hidden = true;
     localStorage.setItem('tzclock.onboarded', '1');
+    document.removeEventListener('keydown', onKey, true);
+    if (prevFocus && prevFocus.focus) prevFocus.focus();
     pulseAddPerson();
+  };
+  // Escape closes; Tab is trapped inside the modal (it's a focus-capturing dialog).
+  const onKey = e => {
+    if (e.key === 'Escape') { dismiss(); return; }
+    if (e.key !== 'Tab') return;
+    const f = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+    else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
   };
   $('onboardClose').addEventListener('click', dismiss);
   $('onboardGotIt').addEventListener('click', dismiss);
   overlay.addEventListener('click', e => { if (e.target === overlay) dismiss(); });
+  document.addEventListener('keydown', onKey, true);
+  $('onboardGotIt').focus();
 }
 function pulseAddPerson() {
   const btn = $('openAdd');

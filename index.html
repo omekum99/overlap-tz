@@ -36,6 +36,13 @@
         <input id="datePick" type="date" aria-label="Date" />
         <button id="nextDay" class="btn ghost icon-btn" title="Next day">›</button>
         <button id="todayBtn" class="btn ghost sm">Today</button>
+        <div class="combo home-combo" id="homeCombo">
+          <span class="combo-icon">🌐</span>
+          <input id="homeTz" class="combo-input" placeholder="Viewing in…" autocomplete="off"
+                 aria-label="View the whole board in this timezone"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="homeTzList" />
+          <ul id="homeTzList" class="combo-list" role="listbox" hidden></ul>
+        </div>
         <span class="spacer"></span>
         <div class="settings-wrap">
           <button id="settingsBtn" class="btn ghost icon-btn" title="Settings">⚙️</button>
@@ -47,6 +54,12 @@
                 <button id="dayNightBtn" class="toggle-btn" title="Show day/night gradient">☀🌙 Day</button>
                 <button id="compactBtn" class="toggle-btn" title="Compact rows">≡ Compact</button>
                 <button id="fmt12Btn" class="toggle-btn" title="12-hour clock">12h</button>
+              </div>
+            </div>
+            <div class="sp-section" id="paletteSection">
+              <span class="sp-label">Day/night palette</span>
+              <div class="sp-row">
+                <select id="paletteSelect" class="mini-select" aria-label="Day/night colour palette"></select>
               </div>
             </div>
             <div class="sp-section">
@@ -176,8 +189,9 @@
       </label>
       <label>Location / timezone
         <div class="combo" id="memberCombo">
-          <input id="mTz" class="combo-input" required placeholder="Search a city or country…" autocomplete="off" />
-          <ul id="mTzList" class="combo-list" hidden></ul>
+          <input id="mTz" class="combo-input" required placeholder="Search a city or country…" autocomplete="off"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="mTzList" />
+          <ul id="mTzList" class="combo-list" role="listbox" hidden></ul>
         </div>
       </label>
       <div class="row-2">
