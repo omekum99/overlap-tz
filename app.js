@@ -883,7 +883,8 @@ function renderTeamList() {
 function onSubmitMember(e) {
   e.preventDefault();
   const name = $('mName').value.trim();
-  const tz = $('mTz').dataset.tz || (tzSearch($('mTz').value, 1)[0] || {}).tz || '';
+  const raw = $('mTz').value.trim();
+  const tz = $('mTz').dataset.tz || (tzSearch(raw, 1)[0] || {}).tz || (isValidZone(raw) ? raw : '');
   const start = parseTime($('mStart').value);
   const end = parseTime($('mEnd').value);
   const overnight = $('mOvernight').checked;
