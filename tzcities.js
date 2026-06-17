@@ -90,18 +90,28 @@ function _humanizeTz(tz) {
   return { city, region };
 }
 
+// The host's canonical id for a zone. Lets us collapse aliases (Asia/Kolkata vs
+// Asia/Calcutta, Europe/Kyiv vs Europe/Kiev) so the full IANA list never shows a
+// second entry for a zone we already curated. Engines disagree on which name is
+// canonical, but both inputs route through the same resolver, so they match.
+function _canonicalTz(tz) {
+  try { return new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone; }
+  catch { return tz; }
+}
+
 // Full index: curated first, then every other IANA zone humanized.
 const TZ_INDEX = (() => {
   const seen = new Set();
   const out = [];
   for (const c of TZ_CURATED) {
-    seen.add(c.tz);
+    seen.add(_canonicalTz(c.tz));
     const label = c.city === c.country ? c.city : `${c.city}, ${c.country}`;
     out.push({ tz: c.tz, label, hay: `${c.city} ${c.country} ${c.aka} ${c.tz}`.toLowerCase() });
   }
   const all = (typeof VALID_ZONES !== 'undefined' && VALID_ZONES) ? [...VALID_ZONES] : [];
   for (const tz of all) {
-    if (seen.has(tz)) continue;
+    if (seen.has(_canonicalTz(tz))) continue;
+    seen.add(_canonicalTz(tz));
     const { city, region } = _humanizeTz(tz);
     out.push({ tz, label: `${city}${region ? ' · ' + region : ''}`, hay: `${city} ${region} ${tz}`.toLowerCase() });
   }
