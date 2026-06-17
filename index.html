@@ -51,7 +51,8 @@
           <button id="zoomIn" class="btn ghost icon-btn" title="Zoom in">+</button>
         </div>
         <label class="switch" title="12-hour clock"><input id="fmt12" type="checkbox" /><span>AM/PM</span></label>
-        <button id="blockBtn" class="btn primary sm" title="Block a time / create a meeting">＋ Block time</button>
+        <button id="dayNightBtn" class="btn ghost sm" title="Show each person's day & night — respect their hours">☾ Day / night</button>
+        <button id="compactBtn" class="btn ghost icon-btn" title="Compact rows" aria-label="Compact rows">≡</button>
       </div>
 
       <!-- team filters double as the planner scope -->
@@ -60,6 +61,9 @@
         <div id="teamFilter" class="team-filter"></div>
         <span id="scrubReadout" class="scrub-readout"></span>
       </div>
+
+      <!-- scrollable date strip — drag/scroll to any day -->
+      <div id="dateStrip" class="date-strip" aria-label="Pick a date"></div>
 
       <!-- scrollable, hover-readable timeline -->
       <div id="board" class="board">
@@ -110,6 +114,7 @@
       </section>
 
       <section class="card meetings-card">
+        <button id="blockBtn" class="btn primary block-cta">＋ Block time / new meeting</button>
         <button id="toggleMeetings" class="card-head collapser" aria-expanded="true">
           <h2>Saved meetings <span id="mtgCount" class="count"></span></h2>
           <span class="muted small">on this device · <span class="chevron">▾</span></span>

@@ -26,8 +26,12 @@ let homeTz = restoreHomeTz();
 let refDate = todayISO(homeTz);
 let scrubHour = nowAxisHour(homeTz);    // pinned scrubber position (home-tz hours)
 let activeTeams = new Set();            // team ids shown on the board; empty = everyone
+let boardCustom = false;                // board "Custom" mode: pick specific people
+let boardPeople = new Set();            // member indices shown when boardCustom
 let plannerTeams = new Set();           // "Find a time" scope: team ids (empty = everyone)
 let plannerPeople = new Set();          // "Find a time" scope: specific member indices (overrides teams)
+let dayNight = localStorage.getItem('tzclock.daynight') === '1';   // day/night gradient view
+let compact = localStorage.getItem('tzclock.compact') === '1';     // dense rows
 let search = '';
 let userZoomed = localStorage.getItem('tzclock.userZoom') === '1';
 let zoom = +(localStorage.getItem('tzclock.zoom') || 48);
@@ -52,6 +56,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.documentElement.style.setProperty('--hour-w', zoom + 'px');
   const f12 = localStorage.getItem('tzclock.fmt12') === '1';
   setHour12(f12); $('fmt12').checked = f12;
+  document.documentElement.classList.toggle('compact-mode', compact);
+  $('compactBtn').classList.toggle('active', compact);
+  $('dayNightBtn').classList.toggle('active', dayNight);
   if (localStorage.getItem('tzclock.mtgOpen') === '0') $('toggleMeetings').closest('.meetings-card').classList.add('collapsed');
 
   initDaysOff();
@@ -87,8 +94,9 @@ function render() {
   $('org').value = state.org;
   $('homeTz').value = labelForTz(homeTz);
   $('datePick').value = refDate;
-  $('dateLabel').textContent = prettyDate(refDate) + (isTodayISO(refDate, homeTz) ? ' · today' : '');
+  $('dateLabel').innerHTML = `📅 <b>${esc(prettyDate(refDate))}</b>` + (isTodayISO(refDate, homeTz) ? ' · today' : '');
   pruneActiveTeams();
+  renderDateStrip();
   renderTeamFilter();
   renderTeamSelect();
   renderTeamList();
@@ -102,15 +110,19 @@ function render() {
   save();
 }
 
-// Members visible on the board / counted by the planner (team filter + search).
+// Members visible on the board (team filter / custom people + search).
 function visibleEntries() {
   const q = search.trim().toLowerCase();
   return state.members
     .map((m, gi) => ({ m, gi }))
-    .filter(e => (activeTeams.size === 0 || activeTeams.has(e.m.teamId)) && (!q || e.m.name.toLowerCase().includes(q)));
+    .filter(e => inBoardScope(e.gi, e.m) && (!q || e.m.name.toLowerCase().includes(q)));
+}
+function inBoardScope(gi, m) {
+  if (boardCustom) return boardPeople.has(gi);
+  return activeTeams.size === 0 || activeTeams.has(m.teamId);
 }
 function scopeMembers() {
-  return state.members.filter(m => activeTeams.size === 0 || activeTeams.has(m.teamId));
+  return state.members.filter((m, gi) => inBoardScope(gi, m));
 }
 function teamById(id) { return state.teams.find(t => t.id === id); }
 function colorOf(member) {
@@ -119,23 +131,55 @@ function colorOf(member) {
 }
 function pruneActiveTeams() {
   for (const id of [...activeTeams]) if (!teamById(id)) activeTeams.delete(id);
+  for (const i of [...boardPeople]) if (!state.members[i]) boardPeople.delete(i);
+}
+
+// ── date strip (scrollable; click any day) ────────────────────────────────────
+function renderDateStrip() {
+  const box = $('dateStrip');
+  let html = '';
+  for (let d = -7; d <= 14; d++) {
+    const iso = shiftISO(refDate, d);
+    const dt = DateTime.fromISO(iso);
+    const sel = iso === refDate, today = isTodayISO(iso, homeTz);
+    html += `<button class="day-cell ${sel ? 'sel' : ''} ${today ? 'today' : ''}" data-iso="${iso}">
+      <span class="dc-dow">${dt.toFormat('ccc')}</span><span class="dc-day">${dt.toFormat('dd')}</span><span class="dc-mon">${dt.toFormat('LLL')}</span></button>`;
+  }
+  box.innerHTML = html;
+  box.querySelectorAll('.day-cell').forEach(b => b.addEventListener('click', () => { refDate = b.dataset.iso; render(); }));
+  const sel = box.querySelector('.day-cell.sel');
+  if (sel) requestAnimationFrame(() => sel.scrollIntoView({ inline: 'center', block: 'nearest' }));
 }
 
 // ── team filter (multi-select; also the planner scope) ─────────────────────────
 function renderTeamFilter() {
   const box = $('teamFilter');
-  const chip = (id, label, on, dot) =>
-    `<button class="tf-chip ${on ? 'active' : ''}" data-team="${id}">${dot}${esc(label)}</button>`;
-  const chips = [chip('__all', 'Everyone', activeTeams.size === 0, '')];
+  const chip = (attr, val, label, on, dot) =>
+    `<button class="tf-chip ${dot ? 'person-chip' : ''} ${on ? 'active' : ''}" data-${attr}="${val}">${dot || ''}${esc(label)}</button>`;
+  let html = chip('team', '__all', 'Everyone', !boardCustom && activeTeams.size === 0, '');
   for (const t of state.teams) {
     const dot = `<span class="dot" style="background:${TEAM_COLORS[t.color % TEAM_COLORS.length]}"></span>`;
-    chips.push(chip(t.id, t.name, activeTeams.has(t.id), dot));
+    html += chip('team', t.id, t.name, !boardCustom && activeTeams.has(t.id), dot);
   }
-  box.innerHTML = chips.join('');
-  box.querySelectorAll('.tf-chip').forEach(b => b.addEventListener('click', () => {
+  html += chip('team', '__custom', 'Custom', boardCustom, '');
+  if (boardCustom && state.members.length) {
+    html += '<span class="scope-sep">People</span>';
+    state.members.forEach((m, gi) => {
+      const dot = `<span class="dot" style="background:${colorOf(m)}"></span>`;
+      html += chip('bperson', gi, m.name, boardPeople.has(gi), dot);
+    });
+  }
+  box.innerHTML = html;
+  box.querySelectorAll('[data-team]').forEach(b => b.addEventListener('click', () => {
     const id = b.dataset.team;
-    if (id === '__all') activeTeams.clear();
-    else { activeTeams.has(id) ? activeTeams.delete(id) : activeTeams.add(id); }
+    if (id === '__custom') { boardCustom = true; if (boardPeople.size === 0) state.members.forEach((m, gi) => boardPeople.add(gi)); }
+    else if (id === '__all') { boardCustom = false; activeTeams.clear(); }
+    else { boardCustom = false; activeTeams.has(id) ? activeTeams.delete(id) : activeTeams.add(id); }
+    render();
+  }));
+  box.querySelectorAll('[data-bperson]').forEach(b => b.addEventListener('click', () => {
+    const gi = +b.dataset.bperson;
+    boardPeople.has(gi) ? boardPeople.delete(gi) : boardPeople.add(gi);
     render();
   }));
 }
@@ -152,6 +196,44 @@ function renderAxis() {
   }
 }
 
+// Their UTC offset on the selected date, e.g. "UTC+5:30" / "UTC−4".
+function utcOffsetLabel(tz, iso) {
+  const o = DateTime.fromISO(iso, { zone: tz }).offset;     // minutes
+  const sign = o >= 0 ? '+' : '−';
+  const am = Math.abs(o), h = Math.floor(am / 60), m = am % 60;
+  return `UTC${sign}${h}${m ? ':' + pad2(m) : ''}`;
+}
+// The member's local clock hour at a given axis hour (for the day/night ramp).
+function localHourAtAxis(axisH, m) {
+  const inst = axisInstant(axisH, refDate, homeTz).setZone(m.tz);
+  return inst.hour + inst.minute / 60;
+}
+// Day/night colour ramp: deep night → dawn red → midday gold → dusk → night.
+const DN_KEYS = [
+  { h: 0, c: [13, 17, 38] }, { h: 4.5, c: [22, 24, 52] }, { h: 5.5, c: [60, 38, 74] },
+  { h: 6.5, c: [168, 78, 64] }, { h: 7.5, c: [226, 138, 74] }, { h: 9, c: [243, 198, 96] },
+  { h: 12, c: [250, 222, 120] }, { h: 15, c: [243, 198, 96] }, { h: 16.5, c: [226, 138, 74] },
+  { h: 18, c: [168, 78, 64] }, { h: 19.5, c: [60, 38, 74] }, { h: 21, c: [22, 24, 52] },
+  { h: 24, c: [13, 17, 38] },
+];
+function dnColor(h) {
+  h = mod24(h);
+  for (let i = 0; i < DN_KEYS.length - 1; i++) {
+    const a = DN_KEYS[i], b = DN_KEYS[i + 1];
+    if (h >= a.h && h <= b.h) {
+      const t = (h - a.h) / (b.h - a.h || 1);
+      const c = a.c.map((v, k) => Math.round(v + (b.c[k] - v) * t));
+      return `rgb(${c[0]},${c[1]},${c[2]})`;
+    }
+  }
+  return 'rgb(13,17,38)';
+}
+function dayNightGradient(m) {
+  const stops = [];
+  for (let i = 0; i <= 24; i++) stops.push(`${dnColor(localHourAtAxis(i, m))} ${(i / 24 * 100).toFixed(2)}%`);
+  return `linear-gradient(to right, ${stops.join(',')})`;
+}
+
 function renderLanes() {
   const wrap = $('lanes');
   wrap.innerHTML = '';
@@ -163,23 +245,41 @@ function renderLanes() {
   }
   for (const { m, gi } of entries) {
     const off = isMemberOff(m, refDate);
+    const offset = utcOffsetLabel(m.tz, refDate);
     const row = document.createElement('div');
     row.className = 'tl-row lane' + (off ? ' off' : '');
     row.dataset.gi = gi;
+
     const bands = bandToAxisIntervals(m, refDate, homeTz)
-      .map(iv => `<div class="band" style="left:${iv.start / 24 * 100}%;width:${(iv.end - iv.start) / 24 * 100}%;background:${colorOf(m)}"></div>`)
+      .map(iv => `<div class="band" style="left:${iv.start / 24 * 100}%;width:${(iv.end - iv.start) / 24 * 100}%;--bc:${colorOf(m)}"></div>`)
       .join('');
+
+    let dn = '', trackStyle = '';
+    if (dayNight) {
+      trackStyle = ` style="background:${dayNightGradient(m)}"`;
+      const noon = memberHourToAxis(12, m.tz, refDate, homeTz);
+      const mid = memberHourToAxis(0, m.tz, refDate, homeTz);
+      dn = `<span class="celestial sun" style="left:${noon / 24 * 100}%" title="Their midday">☀</span>
+            <span class="celestial moon" style="left:${mid / 24 * 100}%" title="Their midnight">☾</span>`;
+    }
+
     row.innerHTML = `
       <div class="tl-label">
         <span class="dot" style="background:${colorOf(m)}"></span>
         <div class="who">
-          <div class="name">${esc(m.name)}${off ? ' <span class="tag-off">off</span>' : ''}</div>
+          <div class="name">${esc(m.name)}${off ? ' <span class="tag-off">off</span>' : ''}
+            <span class="off-pill mono">${offset}</span></div>
           <div class="meta">${esc(labelForTz(m.tz))} · ${hourLabel(m.start)}–${hourLabel(m.end)}</div>
         </div>
+        <button class="lane-tz" data-ltz="${esc(m.tz)}" title="Show the board in ${esc(m.name)}'s timezone">⌖</button>
       </div>
-      <div class="tl-track work">${bands}<span class="live" id="live-${gi}"></span></div>`;
+      <div class="tl-track work${dayNight ? ' dn' : ''}"${trackStyle}>${dn}${bands}<span class="live" id="live-${gi}"></span></div>`;
     wrap.appendChild(row);
   }
+  wrap.querySelectorAll('.lane-tz').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    homeTz = b.dataset.ltz; localStorage.setItem('tzclock.home', homeTz); render();
+  }));
 }
 
 function xForHour(h) { return LW() + h * HW(); }
@@ -279,7 +379,7 @@ function renderBlocks() {
 }
 
 function updateScrub(h = scrubHour) {
-  $('scrubReadout').textContent = `${hourLabel(h)} · ${labelForTz(homeTz)}`;
+  $('scrubReadout').textContent = `${DateTime.fromISO(refDate).toFormat('ccc dd LLL')} · ${hourLabel(h)} · ${labelForTz(homeTz)}`;
   for (const { m, gi } of visibleEntries()) {
     const el = $('live-' + gi);
     if (!el) continue;
@@ -584,6 +684,15 @@ function bindControls() {
   $('zoomOut').addEventListener('click', () => setZoom(zoom - 12));
   $('fitBtn').addEventListener('click', () => { userZoomed = false; localStorage.setItem('tzclock.userZoom', '0'); fitZoom(); });
   $('fmt12').addEventListener('change', e => { setHour12(e.target.checked); localStorage.setItem('tzclock.fmt12', e.target.checked ? '1' : '0'); render(); });
+  $('dayNightBtn').addEventListener('click', () => {
+    dayNight = !dayNight; localStorage.setItem('tzclock.daynight', dayNight ? '1' : '0');
+    $('dayNightBtn').classList.toggle('active', dayNight); renderLanes(); positionMarkers(); updateScrub();
+  });
+  $('compactBtn').addEventListener('click', () => {
+    compact = !compact; localStorage.setItem('tzclock.compact', compact ? '1' : '0');
+    document.documentElement.classList.toggle('compact-mode', compact);
+    $('compactBtn').classList.toggle('active', compact); positionMarkers();
+  });
   $('search').addEventListener('input', e => { search = e.target.value; renderLanes(); renderRoster(); updateScrub(); });
   $('duration').addEventListener('change', renderPlanner);
   $('blockBtn').addEventListener('click', () => {

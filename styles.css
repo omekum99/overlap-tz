@@ -11,7 +11,7 @@
   --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
 
   /* layout metrics */
-  --label-w: 176px;     /* sticky name column            */
+  --label-w: 196px;     /* sticky name column            */
   --hour-w: 48px;       /* px per hour (zoom; set by JS)  */
   --lane-h: 38px;
   --topbar-h: 60px;
@@ -115,8 +115,27 @@ textarea { resize: vertical; }
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; }
 .ctrl-group { display: flex; align-items: center; gap: .25rem; }
 .date-nav input[type="date"] { padding: .34rem .5rem; font-size: .8rem; }
-.date-pretty { font-size: .8rem; color: var(--muted); margin-left: .15rem; white-space: nowrap; }
+.date-pretty { font-size: .92rem; color: var(--text); margin-left: .15rem; white-space: nowrap; }
+.date-pretty b { font-family: var(--font-display); font-weight: 800; color: var(--accent); }
 .controls .spacer { flex: 1; }
+.btn.sm.active, .icon-btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* scrollable date strip */
+.date-strip { display: flex; gap: .3rem; overflow-x: auto; padding: .15rem 0 .35rem; scroll-behavior: smooth;
+  scrollbar-color: var(--line-strong) transparent; }
+.date-strip::-webkit-scrollbar { height: 8px; }
+.date-strip::-webkit-scrollbar-thumb { background: var(--line-strong); }
+.day-cell { flex: none; width: 52px; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: .3rem 0; border: 1px solid var(--line); background: var(--bg-2); color: var(--text); cursor: pointer;
+  font-family: var(--font-body); transition: border-color .12s, background .12s; }
+.day-cell:hover { border-color: var(--accent); }
+.day-cell .dc-dow { font-size: .58rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.day-cell .dc-day { font-size: 1rem; font-weight: 800; font-family: var(--font-display); line-height: 1; }
+.day-cell .dc-mon { font-size: .56rem; text-transform: uppercase; color: var(--muted); }
+.day-cell.today { border-color: var(--now); }
+.day-cell.today .dc-day { color: var(--now); }
+.day-cell.sel { background: var(--accent); border-color: var(--accent); }
+.day-cell.sel .dc-dow, .day-cell.sel .dc-day, .day-cell.sel .dc-mon { color: var(--accent-ink); }
 
 .filters { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .filters-label { font-size: .64rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
@@ -127,7 +146,14 @@ textarea { resize: vertical; }
 .tf-chip:hover { border-color: var(--accent); color: var(--text); }
 .tf-chip.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .tf-chip.active .dot { box-shadow: 0 0 0 1.5px var(--accent-ink); }
-.scrub-readout { margin-left: auto; font-family: var(--font-mono); font-weight: 700; font-size: .82rem; color: var(--accent); white-space: nowrap; }
+.scrub-readout { margin-left: auto; font-family: var(--font-mono); font-weight: 700; font-size: .84rem; color: var(--accent); white-space: nowrap; }
+
+/* compact rows — denser timeline, hide the secondary meta line */
+.compact-mode { --lane-h: 26px; }
+.compact-mode .who .meta { display: none; }
+.compact-mode .off-pill { font-size: .56rem; }
+
+.block-cta { width: 100%; margin-bottom: .7rem; }
 
 /* ── timeline board ── */
 /* sizes to the lanes it holds, capped — then scrolls vertically (no dead space) */
@@ -161,9 +187,25 @@ textarea { resize: vertical; }
 
 .tl-track.work { height: var(--lane-h); border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
   background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(var(--hour-w) - 1px), var(--line) calc(var(--hour-w) - 1px), var(--line) var(--hour-w)); }
-.band { position: absolute; top: 6px; bottom: 6px; background: var(--band); opacity: .92; }
+.band { position: absolute; top: 6px; bottom: 6px; background: var(--bc, var(--band)); opacity: .92; }
 .lane.off .band { opacity: .25; }
 .lane.off .tl-track.work { background-color: color-mix(in srgb, var(--muted) 8%, transparent); }
+
+/* day/night view — the working band reads as a bright frame over the sky ramp */
+.tl-track.dn .band { background: color-mix(in srgb, var(--bc) 26%, transparent); opacity: 1;
+  outline: 1.5px solid color-mix(in srgb, var(--bc) 85%, white); outline-offset: -1px; }
+.celestial { position: absolute; top: 50%; transform: translate(-50%, -50%); font-size: .8rem; line-height: 1; pointer-events: none;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.4)); z-index: 1; }
+.celestial.sun { color: #ffe79a; }
+.celestial.moon { color: #cdd6ff; }
+.lane.off .tl-track.dn { filter: saturate(.5) brightness(.92); }
+
+.off-pill { font-size: .58rem; font-weight: 700; color: var(--muted); background: var(--bg-3);
+  border: 1px solid var(--line); padding: 0 5px; margin-left: 4px; vertical-align: middle; }
+.lane-tz { margin-left: auto; flex: none; background: transparent; border: none; color: var(--muted);
+  cursor: pointer; font-size: .95rem; padding: 0 2px; opacity: 0; transition: opacity .12s, color .12s; }
+.lane:hover .lane-tz { opacity: 1; }
+.lane-tz:hover { color: var(--accent); }
 .live { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-family: var(--font-mono);
   font-size: .66rem; font-weight: 700; padding: 1px 6px; background: var(--bg-3); color: var(--muted); border: 1px solid var(--line); }
 .live.working { background: var(--accent-soft); color: var(--accent); border-color: transparent; }

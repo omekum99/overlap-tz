@@ -35,8 +35,16 @@ python3 -m http.server 8000   # then visit http://localhost:8000
   of the day to roll into the next/previous one.
 - **Hover to read every zone** — move the cursor across the timeline and each teammate's
   local time updates live (green = inside their working hours); click to pin, arrow-keys nudge.
-- **Team filters** — chips above the timeline show/hide sub-teams; they also set the planner
-  scope (multi-select, or "Everyone").
+- **Scrollable date strip** — a week-at-a-glance row under the controls; scroll it and click
+  any day. Today and the selected day are highlighted, and the date is shown large up top.
+- **Day / night view** — a toggle paints each person's sky across the axis (deep night → dawn
+  red → midday gold → dusk) with ☀ at their noon and ☾ at their midnight, so you can *see*
+  whose evening you'd be taking — and schedule respectfully. The working band frames over it.
+- **UTC offset + compact rows** — every lane shows the person's offset (e.g. `UTC+5:30`); the
+  ≡ button switches to dense rows. Hover a lane and hit ⌖ to re-base the whole board on that
+  person's timezone.
+- **Team filters** — chips above the timeline show/hide sub-teams, or pick **Custom** to
+  choose exactly who appears. (The planner has its own independent scope, below.)
 - **＋ Block time** — one button (or a double-click on the timeline) opens a dialog where the
   date, start, and length are all editable inline — no scrolling to the right day first.
 - **Date navigation** — ◀ / ▶ / date-picker / Today. Offsets are computed *per date*, so
