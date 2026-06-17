@@ -56,17 +56,31 @@ python3 -m http.server 8000   # then visit http://localhost:8000
   by a stable workspace id (`wid`) that rides along in the URL. Not shared; export to a
   calendar to share a meeting.
 
+## Design & interaction
+
+- **Four themes ("modes")** — Zen (light, minimal), Midnight (refined dark), Aurora (vivid
+  dark), Daylight (dense/compact). Switch from the top bar; choice is remembered. Fonts:
+  Bricolage Grotesque (display), Manrope (body), JetBrains Mono (times).
+- **Scrollable, zoomable timeline** — the 24h board scrolls horizontally with sticky name
+  column; − / + zoom the hour width.
+- **Search by city or country** — type "Boston", "India", "London" to find the right zone
+  (no need to know IANA names like `America/New_York`).
+- **Drag & drop** — drag a person chip onto a team to reassign them.
+- **Calm canvas** — the timeline and planner are the focus; data-entry forms (add person,
+  manage teams) live in a slide-in drawer so the main view stays uncluttered.
+
 ## Files
 
 | File          | Job                                                                |
 |---------------|--------------------------------------------------------------------|
 | `index.html`  | Markup + loads the libraries and scripts                           |
-| `styles.css`  | All styling (plain CSS)                                            |
+| `styles.css`  | All styling + the four theme modes (plain CSS variables)           |
 | `state.js`    | URL ↔ config: key-minify, lz-string compress/decompress, validate  |
+| `tzcities.js` | Friendly timezone search (city/country/alias → IANA)               |
 | `timeutil.js` | Timezone math: date/home-tz projection, scrubber, overlap, slots   |
 | `store.js`    | Private per-workspace meetings in localStorage                     |
 | `calendar.js` | .ics file + Google Calendar link generation                        |
-| `app.js`      | UI: rendering, scrubber, forms, teams, planner, meetings, share    |
+| `app.js`      | UI: modes, timeline, scrubber, combobox, drag & drop, drawer, planner, meetings |
 
 ## Deploy to GitHub Pages
 

@@ -1,171 +1,197 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-mode="zen">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Timezones — shareable team clock</title>
-  <meta name="description" content="See your whole distributed team on one 24h timeline. No login, no server — the whole workspace lives in the URL." />
+  <title>Overlap — a shareable team clock</title>
+  <meta name="description" content="See your whole distributed team on one scrollable timeline. No login, no server — the workspace lives in the URL." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🕒</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>◷</text></svg>" />
 </head>
 <body>
+  <!-- ───────────────────────── Top bar ───────────────────────── -->
   <header class="topbar">
     <div class="brand">
-      <span class="logo">🕒</span>
-      <input id="org" class="org" placeholder="Name your workspace…" maxlength="40" />
+      <span class="mark">◷</span>
+      <input id="org" class="org" placeholder="Workspace name…" maxlength="40" aria-label="Workspace name" />
     </div>
     <div class="topbar-right">
-      <span id="urlBadge" class="url-badge" title="Length of the shareable URL. Stay under ~2000 chars so chat apps don't truncate it."></span>
-      <button id="shareBtn" class="btn btn-primary">🔗 Share workspace</button>
+      <div class="mode-switch" role="tablist" aria-label="Theme">
+        <button data-mode="zen"      class="mode-btn" title="Zen — light & minimal">Zen</button>
+        <button data-mode="midnight" class="mode-btn" title="Midnight — refined dark">Midnight</button>
+        <button data-mode="aurora"   class="mode-btn" title="Aurora — vivid dark">Aurora</button>
+        <button data-mode="daylight" class="mode-btn" title="Daylight — dense & bright">Daylight</button>
+      </div>
+      <span id="urlBadge" class="url-badge" title="Length of the shareable URL. Stay under ~2000 chars."></span>
+      <button id="shareBtn" class="btn btn-primary">Share link</button>
     </div>
   </header>
 
   <main>
-    <!-- ───────────── Board: 24h UTC axis + one lane per member ───────────── -->
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Team timeline</h2>
-        <div id="teamFilter" class="chips"></div>
+    <!-- ───────────────────────── Timeline (hero) ───────────────────────── -->
+    <section class="card hero">
+      <div class="hero-bar">
+        <div class="hero-bar-left">
+          <div class="combo" id="homeCombo">
+            <span class="combo-icon">🌍</span>
+            <input id="homeTz" class="combo-input" placeholder="Show times in… (city or country)" autocomplete="off" aria-label="Reference timezone" />
+            <ul id="homeTzList" class="combo-list" hidden></ul>
+          </div>
+        </div>
+        <div class="hero-bar-right">
+          <div class="date-nav">
+            <button id="prevDay" class="btn ghost icon-btn" title="Previous day">‹</button>
+            <input id="datePick" type="date" aria-label="Date" />
+            <button id="nextDay" class="btn ghost icon-btn" title="Next day">›</button>
+            <button id="todayBtn" class="btn ghost">Today</button>
+          </div>
+          <div class="zoom">
+            <button id="zoomOut" class="btn ghost icon-btn" title="Zoom out">−</button>
+            <button id="zoomIn" class="btn ghost icon-btn" title="Zoom in">+</button>
+          </div>
+          <label class="switch" title="12-hour clock">
+            <input id="fmt12" type="checkbox" /><span>AM/PM</span>
+          </label>
+        </div>
       </div>
+      <p class="date-line"><span id="dateLabel"></span> · <span id="scrubReadout"></span></p>
 
-      <div class="board-controls">
-        <div class="ctrl">
-          <label for="homeTz">Show times in</label>
-          <input id="homeTz" list="zones" class="homeTz" placeholder="Your timezone" />
-        </div>
-        <div class="ctrl date-nav">
-          <button id="prevDay" class="btn icon-btn" title="Previous day">◀</button>
-          <input id="datePick" type="date" />
-          <button id="nextDay" class="btn icon-btn" title="Next day">▶</button>
-          <button id="todayBtn" class="btn btn-ghost">Today</button>
-          <span id="dateLabel" class="date-label"></span>
-        </div>
-        <div class="ctrl">
-          <label for="search">Find</label>
-          <input id="search" class="search" placeholder="Search teammates…" />
-        </div>
-        <label class="ctrl checkbox fmt">
-          <input id="fmt12" type="checkbox" /> 12-hour
-        </label>
-      </div>
-
-      <p class="hint">Drag the <b>scrubber</b> across the board to read everyone's local time at that instant. Green = inside working hours.</p>
       <div id="board" class="board">
-        <div class="row axis">
-          <div class="lane-label axis-label"><span id="scrubReadout">UTC</span></div>
-          <div id="axisTrack" class="track axis-track"></div>
+        <div id="boardInner" class="board-inner">
+          <div class="tl-row axis">
+            <div class="tl-label axis-label">Teammate</div>
+            <div id="axisTrack" class="tl-track axis-track"></div>
+          </div>
+          <div id="lanes"></div>
+          <div id="nowMarker" class="marker now" title="Now"><span>now</span></div>
+          <div id="scrubber" class="marker scrub" tabindex="0" aria-label="Time scrubber"></div>
         </div>
-        <div id="lanes"></div>
-        <div id="nowMarker" class="marker now" title="Now (UTC)"></div>
-        <div id="scrubber" class="marker scrub"></div>
       </div>
     </section>
 
-    <div class="two-col">
-      <!-- ───────────── Add / edit member ───────────── -->
-      <section class="panel">
-        <div class="panel-head"><h2 id="formTitle">Add a teammate</h2></div>
-        <form id="memberForm" class="form" autocomplete="off">
-          <label>Name
-            <input id="mName" required maxlength="30" placeholder="e.g. Sriram" />
-          </label>
-          <label>Timezone
-            <input id="mTz" list="zones" required placeholder="Start typing a city… e.g. Asia/Kolkata" />
-            <datalist id="zones"></datalist>
-          </label>
-          <div class="row-2">
-            <label>Starts
-              <input id="mStart" type="time" step="1800" value="09:00" required />
-            </label>
-            <label>Ends
-              <input id="mEnd" type="time" step="1800" value="17:00" required />
-            </label>
-          </div>
-          <label class="checkbox">
-            <input id="mOvernight" type="checkbox" /> Overnight shift (end is next day)
-          </label>
-          <div class="days-off">
-            <span class="days-off-label">Days off</span>
-            <div id="mDaysOff" class="day-toggles"></div>
-          </div>
-          <label>Team
-            <select id="mTeam"><option value="">— No team —</option></select>
-          </label>
-          <p id="formError" class="error" hidden></p>
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary" id="saveMemberBtn">Add teammate</button>
-            <button type="button" class="btn" id="cancelEditBtn" hidden>Cancel</button>
-            <button type="button" class="btn btn-ghost" id="dummyBtn" title="Add a random teammate for planning">🎲 Add dummy user</button>
-          </div>
-        </form>
-      </section>
-
-      <!-- ───────────── Teams + Meeting planner ───────────── -->
-      <section class="panel">
-        <div class="panel-head"><h2>Sub-teams</h2></div>
-        <form id="teamForm" class="team-form">
-          <input id="teamName" maxlength="24" placeholder="New team (e.g. Marketing)" />
-          <button class="btn btn-primary" type="submit">+ Add team</button>
-        </form>
-        <ul id="teamList" class="team-list"></ul>
-
-        <div class="panel-head" style="margin-top:1.25rem"><h2>Meeting planner</h2></div>
-        <p class="hint">Best windows where <b id="plannerScopeName">everyone</b> is working at the same time. Pick a slot to create a meeting.</p>
-        <div class="planner-controls">
-          <label>Meeting length
-            <select id="duration">
+    <div class="grid">
+      <!-- ───────────────────────── Meeting planner ───────────────────────── -->
+      <section class="card planner-card">
+        <div class="card-head">
+          <h2>Find a time</h2>
+          <div class="head-actions">
+            <select id="plannerScope" class="mini-select" aria-label="Who to schedule"></select>
+            <select id="duration" class="mini-select" aria-label="Meeting length">
               <option value="30">30 min</option>
               <option value="60" selected>1 hour</option>
               <option value="90">1.5 hours</option>
               <option value="120">2 hours</option>
             </select>
-          </label>
+          </div>
         </div>
+        <p class="muted small">When <b id="plannerScopeName">everyone</b> overlaps. Pick a slot to schedule.</p>
         <div id="planner" class="planner"></div>
+      </section>
+
+      <!-- ───────────────────────── Roster (drag & drop) ───────────────────────── -->
+      <section class="card roster-card">
+        <div class="card-head">
+          <h2>Team</h2>
+          <div class="head-actions">
+            <input id="search" class="mini-search" placeholder="Search…" aria-label="Search teammates" />
+            <button id="openAdd" class="btn primary sm">+ Person</button>
+          </div>
+        </div>
+        <p class="muted small">Drag a person onto a team to move them.</p>
+        <div id="roster" class="roster"></div>
+        <button id="openTeams" class="btn ghost block">＋ Manage teams</button>
       </section>
     </div>
 
-    <!-- ───────────── Saved meetings (localStorage, private to this device) ── -->
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Saved meetings</h2>
-        <span class="muted">on this device</span>
-      </div>
+    <!-- ───────────────────────── Saved meetings ───────────────────────── -->
+    <section class="card meetings-card">
+      <button id="toggleMeetings" class="card-head collapser" aria-expanded="true">
+        <h2>Saved meetings <span id="mtgCount" class="count"></span></h2>
+        <span class="muted small">on this device · <span class="chevron">▾</span></span>
+      </button>
       <div id="meetings" class="meetings"></div>
     </section>
   </main>
 
-  <footer class="footer">
-    No account. No server. Your whole team lives in this link — copy the URL to share it.
-  </footer>
+  <footer class="footer">No account · No server · Your whole team lives in this link</footer>
 
-  <div id="toast" class="toast" hidden></div>
+  <!-- ───────────────────────── Slide-in drawer (forms live here) ───────────────────────── -->
+  <div id="scrim" class="scrim" hidden></div>
+  <aside id="drawer" class="drawer" hidden aria-label="Editor">
+    <div class="drawer-head">
+      <h3 id="drawerTitle">Add a teammate</h3>
+      <button id="closeDrawer" class="btn ghost icon-btn" title="Close">✕</button>
+    </div>
 
-  <!-- Create / edit a meeting from a chosen slot -->
+    <!-- Person form -->
+    <form id="memberForm" class="form" autocomplete="off">
+      <label>Name
+        <input id="mName" required maxlength="30" placeholder="e.g. Sriram" />
+      </label>
+      <label>Location / timezone
+        <div class="combo" id="memberCombo">
+          <input id="mTz" class="combo-input" required placeholder="Search a city or country…" autocomplete="off" />
+          <ul id="mTzList" class="combo-list" hidden></ul>
+        </div>
+      </label>
+      <div class="row-2">
+        <label>Starts <input id="mStart" type="time" step="1800" value="09:00" required /></label>
+        <label>Ends <input id="mEnd" type="time" step="1800" value="17:00" required /></label>
+      </div>
+      <label class="checkbox"><input id="mOvernight" type="checkbox" /> Overnight shift (ends next day)</label>
+      <div class="days-off">
+        <span class="days-off-label">Days off</span>
+        <div id="mDaysOff" class="day-toggles"></div>
+      </div>
+      <label>Team
+        <select id="mTeam"><option value="">— No team —</option></select>
+      </label>
+      <p id="formError" class="error" hidden></p>
+      <div class="form-actions">
+        <button type="submit" class="btn primary" id="saveMemberBtn">Add teammate</button>
+        <button type="button" class="btn ghost" id="dummyBtn" title="Add a random teammate">🎲 Dummy</button>
+        <button type="button" class="btn ghost danger" id="deleteMemberBtn" hidden>Remove</button>
+      </div>
+    </form>
+
+    <!-- Teams manager -->
+    <div class="drawer-section">
+      <h4>Sub-teams</h4>
+      <form id="teamForm" class="team-form">
+        <input id="teamName" maxlength="24" placeholder="New team (e.g. Marketing)" />
+        <button class="btn primary" type="submit">Add</button>
+      </form>
+      <ul id="teamList" class="team-list"></ul>
+    </div>
+  </aside>
+
+  <!-- Meeting create / edit -->
   <dialog id="meetingDialog" class="dialog">
     <form method="dialog" id="meetingForm">
       <h3 id="meetingDialogTitle">New meeting</h3>
-      <p id="meetingWhen" class="muted"></p>
-      <label>Title
-        <input id="meetingTitle" maxlength="80" placeholder="e.g. Weekly sync" />
-      </label>
-      <label>Attendees
-        <input id="meetingAttendees" placeholder="Comma-separated names" />
-      </label>
+      <p id="meetingWhen" class="muted small"></p>
+      <label>Title <input id="meetingTitle" maxlength="80" placeholder="e.g. Weekly sync" /></label>
+      <label>Attendees <input id="meetingAttendees" placeholder="Comma-separated names" /></label>
       <label>Minutes / notes (MOM)
         <textarea id="meetingNotes" rows="5" placeholder="Agenda, decisions, action items…"></textarea>
       </label>
       <div class="form-actions">
-        <button value="save" class="btn btn-primary">Save meeting</button>
-        <button value="cancel" class="btn" formnovalidate>Cancel</button>
+        <button value="save" class="btn primary">Save meeting</button>
+        <button value="cancel" class="btn ghost" formnovalidate>Cancel</button>
       </div>
     </form>
   </dialog>
+
+  <div id="toast" class="toast" hidden></div>
 
   <!-- Dependencies (CDN, no build step). Order matters: libs first, then our code. -->
   <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
   <script src="state.js"></script>
+  <script src="tzcities.js"></script>
   <script src="timeutil.js"></script>
   <script src="store.js"></script>
   <script src="calendar.js"></script>
