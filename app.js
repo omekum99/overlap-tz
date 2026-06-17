@@ -57,6 +57,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!state.wid) state.wid = shortId();
   meetings = loadMeetings(state.wid);
 
+  // First-visit onboarding
+  if (!localStorage.getItem('tzclock.onboarded')) showOnboarding();
+
   document.documentElement.style.setProperty('--hour-w', zoom + 'px');
   const f12 = localStorage.getItem('tzclock.fmt12');
   if (f12 !== null) setHour12(f12 === '1');
@@ -962,13 +965,41 @@ function demoWorkspace() {
     org: 'My Global Team', wid: shortId(),
     teams: [{ id: eng, name: 'Engineering', color: 0 }, { id: mkt, name: 'Marketing', color: 2 }],
     members: [
-      { name: 'Sriram', tz: 'Asia/Kolkata', start: 9, end: 17, teamId: eng, weekend: [6, 7] },
       { name: 'Mia', tz: 'America/New_York', start: 9, end: 17, teamId: eng, weekend: [6, 7] },
-      { name: 'Lukas', tz: 'Europe/Berlin', start: 8, end: 16, teamId: mkt, weekend: [6, 7] },
-      { name: 'Yuki', tz: 'Asia/Tokyo', start: 10, end: 18, teamId: mkt, weekend: [6, 7] },
+      { name: 'Oliver', tz: 'Europe/London', start: 9, end: 17, teamId: eng, weekend: [6, 7] },
+      { name: 'Lukas', tz: 'Europe/Berlin', start: 9, end: 17, teamId: mkt, weekend: [6, 7] },
+      { name: 'Priya', tz: 'Asia/Kolkata', start: 12, end: 20, teamId: mkt, weekend: [6, 7] },
     ],
   };
 }
 function parseTime(s) { const [h, m] = String(s).split(':').map(Number); return h + (m || 0) / 60; }
 function toTimeInput(f) { const h = Math.floor(f); return pad2(h) + ':' + pad2(Math.round((f - h) * 60)); }
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+// ── first-visit onboarding ────────────────────────────────────
+function showOnboarding() {
+  const overlay = $('onboardOverlay');
+  if (!overlay) return;
+  overlay.hidden = false;
+  const dismiss = () => {
+    overlay.hidden = true;
+    localStorage.setItem('tzclock.onboarded', '1');
+    pulseAddPerson();
+  };
+  $('onboardClose').addEventListener('click', dismiss);
+  $('onboardGotIt').addEventListener('click', dismiss);
+  overlay.addEventListener('click', e => { if (e.target === overlay) dismiss(); });
+}
+function pulseAddPerson() {
+  const btn = $('openAdd');
+  if (!btn) return;
+  btn.classList.add('pulse');
+  const tip = document.createElement('div');
+  tip.className = 'pulse-tooltip';
+  tip.textContent = '👆 Add your real team';
+  btn.appendChild(tip);
+  setTimeout(() => {
+    btn.classList.remove('pulse');
+    if (tip.parentNode) tip.parentNode.removeChild(tip);
+  }, 4500);
+}

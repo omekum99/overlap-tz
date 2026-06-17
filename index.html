@@ -136,6 +136,32 @@
     </aside>
   </main>
 
+  <!-- ───────────────────────── First-visit onboarding overlay ───────────────────────── -->
+  <div id="onboardOverlay" class="onboard-overlay" hidden>
+    <div class="onboard-modal">
+      <button id="onboardClose" class="onboard-close" aria-label="Close">✕</button>
+      <div class="onboard-panels">
+        <div class="onboard-panel">
+          <span class="onboard-icon">◷</span>
+          <h3 class="onboard-heading">Whole team on<br>one timeline</h3>
+          <p class="onboard-text">Hover or drag to read each teammate's local time. Green bars = working hours.</p>
+        </div>
+        <div class="onboard-panel">
+          <span class="onboard-icon">🔗</span>
+          <h3 class="onboard-heading">Share with one link.<br>No sign-up.</h3>
+          <p class="onboard-text">Team encoded in the URL. Click "Share link" — no server, no database, no accounts.</p>
+        </div>
+        <div class="onboard-panel">
+          <span class="onboard-icon">⏰</span>
+          <h3 class="onboard-heading">Find meeting windows<br>in seconds</h3>
+          <p class="onboard-text">Planner shows overlaps. Pick a slot, add notes, export to calendar.</p>
+        </div>
+      </div>
+      <div class="onboard-divider"></div>
+      <button id="onboardGotIt" class="btn primary onboard-cta">Got it — start using Overlap</button>
+    </div>
+  </div>
+
   <!-- ───────────────────────── Slide-in drawer (forms live here) ───────────────────────── -->
   <div id="scrim" class="scrim" hidden></div>
   <aside id="drawer" class="drawer" hidden aria-label="Editor">
