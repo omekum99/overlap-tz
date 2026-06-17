@@ -1,12 +1,16 @@
 'use strict';
 
 /*
- * app.js — UI wiring. Reads state from the URL, renders the board, handles the
- * scrubber/forms/planner, and writes changes back to the URL.
+ * app.js — UI wiring. Reads the team from the URL, renders the board in a chosen
+ * home timezone on a chosen date, handles the scrubber/forms/planner, and writes
+ * team changes back to the URL.
  *
  * State flow:  URL hash  ──decode──▶  `state`  ──render──▶  DOM
  *                 ▲                                            │
  *                 └──────────── encode (debounced) ◀──────────┘
+ *
+ * `homeTz` and `refDate` are *viewer* settings (not part of the shared URL) — so
+ * everyone opens the same team but sees it in their own timezone, on today.
  */
 
 const TEAM_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#ef4444', '#14b8a6', '#f97316'];
@@ -14,9 +18,17 @@ const LABEL_W = parseInt(getComputedStyle(document.documentElement).getPropertyV
 const SAFE_URL_LEN = 1800;   // warn before chat apps start truncating (~2000)
 
 let state = clone(EMPTY_STATE);
-let scrubUtc = nowUtcHour();  // scrubber position, in UTC hours
-let teamFilter = '';          // '' = show all teams
-let editingIndex = -1;        // index into state.members, or -1 when adding
+let homeTz = restoreHomeTz();        // timezone the board is drawn in
+let refDate = todayISO(homeTz);      // ISO date the board shows
+let scrubHour = nowAxisHour(homeTz); // scrubber position, in home-tz hours
+let teamFilter = '';                 // '' = show all teams
+let editingIndex = -1;               // index into state.members, or -1 when adding
+
+function restoreHomeTz() {
+  const saved = localStorage.getItem('tzclock.home');
+  const tz = saved || browserTz() || 'UTC';
+  return isValidZone(tz) ? tz : 'UTC';
+}
 
 // ── boot ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -44,6 +56,10 @@ function save() {
 // ── render ────────────────────────────────────────────────────────────────────
 function render() {
   document.getElementById('org').value = state.org;
+  document.getElementById('homeTz').value = homeTz;
+  document.getElementById('datePick').value = refDate;
+  document.getElementById('dateLabel').textContent =
+    prettyDate(refDate) + (isTodayISO(refDate, homeTz) ? ' · today' : '');
   renderTeamFilter();
   renderTeamSelect();
   renderTeamList();
@@ -67,7 +83,7 @@ function colorOf(member) {
   return t ? TEAM_COLORS[t.color % TEAM_COLORS.length] : '#64748b';
 }
 
-// ── axis (24 hour ticks) ──────────────────────────────────────────────────────
+// ── axis (24 hour ticks, in home tz) ──────────────────────────────────────────
 function renderAxis() {
   const track = document.getElementById('axisTrack');
   track.innerHTML = '';
@@ -95,7 +111,7 @@ function renderLanes() {
     row.className = 'row lane';
     row.dataset.gi = gi;
 
-    const bands = bandToUtcIntervals(m.start, m.end, m.tz)
+    const bands = bandToAxisIntervals(m, refDate, homeTz)
       .map(iv => `<div class="band" style="left:${iv.start / 24 * 100}%;width:${(iv.end - iv.start) / 24 * 100}%;background:${colorOf(m)}"></div>`)
       .join('');
 
@@ -133,7 +149,7 @@ function bindScrubber() {
     const rect = board.getBoundingClientRect();
     const trackW = rect.width - LABEL_W;
     const pct = Math.min(1, Math.max(0, (clientX - rect.left - LABEL_W) / trackW));
-    scrubUtc = pct * 24;
+    scrubHour = pct * 24;
     updateScrub();
   };
 
@@ -148,11 +164,11 @@ function bindScrubber() {
   board.addEventListener('pointermove', e => { if (dragging) setFromX(e.clientX); });
   board.addEventListener('pointerup', () => { dragging = false; });
 
-  // Keyboard nudge for accessibility.
-  document.getElementById('scrubber').tabIndex = 0;
-  document.getElementById('scrubber').addEventListener('keydown', e => {
-    if (e.key === 'ArrowRight') { scrubUtc = mod24(scrubUtc + 0.25); updateScrub(); }
-    if (e.key === 'ArrowLeft')  { scrubUtc = mod24(scrubUtc - 0.25); updateScrub(); }
+  const scrub = document.getElementById('scrubber');
+  scrub.tabIndex = 0;                                 // keyboard nudge (a11y)
+  scrub.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') { scrubHour = mod24(scrubHour + 0.25); updateScrub(); }
+    if (e.key === 'ArrowLeft')  { scrubHour = mod24(scrubHour - 0.25); updateScrub(); }
   });
 }
 
@@ -163,18 +179,24 @@ function xForHour(h) {
 }
 
 function positionMarkers() {
-  document.getElementById('nowMarker').style.left = xForHour(nowUtcHour()) + 'px';
-  document.getElementById('scrubber').style.left = xForHour(scrubUtc) + 'px';
+  const now = document.getElementById('nowMarker');
+  if (isTodayISO(refDate, homeTz)) {
+    now.style.display = '';
+    now.style.left = xForHour(nowAxisHour(homeTz)) + 'px';
+  } else {
+    now.style.display = 'none';
+  }
+  document.getElementById('scrubber').style.left = xForHour(scrubHour) + 'px';
 }
 
 // Cheap per-frame update — no full re-render while dragging.
 function updateScrub() {
-  document.getElementById('scrubber').style.left = xForHour(scrubUtc) + 'px';
-  document.getElementById('scrubReadout').textContent = hourLabel(scrubUtc) + ' UTC';
+  document.getElementById('scrubber').style.left = xForHour(scrubHour) + 'px';
+  document.getElementById('scrubReadout').textContent = `${hourLabel(scrubHour)} · ${homeTz}`;
   for (const { m, gi } of memberEntries()) {
     const el = document.getElementById('live-' + gi);
     if (!el) continue;
-    const { label, working } = localAtUtc(scrubUtc, m);
+    const { label, working } = localAt(scrubHour, m, refDate, homeTz);
     el.textContent = label;
     el.classList.toggle('working', working);
   }
@@ -223,8 +245,7 @@ function renderTeamList() {
 
 // ── meeting planner ────────────────────────────────────────────────────────────
 function renderPlanner() {
-  const entries = memberEntries();
-  const members = entries.map(e => e.m);
+  const members = memberEntries().map(e => e.m);
   const scopeName = teamFilter ? (teamById(teamFilter)?.name || 'team') : 'everyone';
   document.getElementById('plannerScopeName').textContent = scopeName;
 
@@ -234,20 +255,19 @@ function renderPlanner() {
     return;
   }
 
-  const windows = findOverlapWindows(members).slice(0, 3);
+  const windows = findOverlapWindows(members, refDate, homeTz).slice(0, 3);
   if (windows.length === 0) {
-    box.innerHTML = '<p class="no-overlap">No time of day works for everyone selected. Try a smaller group or a sub-team.</p>';
+    box.innerHTML = '<p class="no-overlap">No time of day works for everyone selected. Try a smaller group, a sub-team, or another date.</p>';
     return;
   }
 
   box.innerHTML = windows.map((w, i) => {
-    const rows = members.map(m => {
-      const off = zoneOffsetHours(m.tz);
-      return `<tr><td>${esc(m.name)}</td><td class="mono">${hourLabel(mod24(w.start + off))}–${hourLabel(mod24(w.end + off))}</td><td class="muted">${esc(m.tz)}</td></tr>`;
-    }).join('');
+    const rows = members.map(m =>
+      `<tr><td>${esc(m.name)}</td><td class="mono">${localAt(w.start, m, refDate, homeTz).label}–${localAt(w.end, m, refDate, homeTz).label}</td><td class="muted">${esc(m.tz)}</td></tr>`
+    ).join('');
     return `<div class="window ${i === 0 ? 'best' : ''}">
       <div class="window-head">
-        <span class="badge-utc">${hourLabel(w.start)}–${hourLabel(w.end)} UTC</span>
+        <span class="badge-utc">${hourLabel(w.start)}–${hourLabel(w.end)} · your time</span>
         <span class="muted">${w.hours.toFixed(2).replace(/\.?0+$/, '')}h overlap${i === 0 ? ' · best' : ''}</span>
       </div>
       <table class="window-tbl">${rows}</table>
@@ -258,6 +278,23 @@ function renderPlanner() {
 // ── forms & controls ───────────────────────────────────────────────────────────
 function bindControls() {
   document.getElementById('org').addEventListener('input', e => { state.org = e.target.value; save(); });
+
+  // Home timezone (viewer setting, remembered locally)
+  document.getElementById('homeTz').addEventListener('change', e => {
+    const tz = e.target.value.trim();
+    if (!isValidZone(tz)) { e.target.value = homeTz; return; }
+    homeTz = tz;
+    localStorage.setItem('tzclock.home', tz);
+    render();
+  });
+
+  // Date navigation
+  document.getElementById('prevDay').addEventListener('click', () => { refDate = shiftISO(refDate, -1); render(); });
+  document.getElementById('nextDay').addEventListener('click', () => { refDate = shiftISO(refDate, +1); render(); });
+  document.getElementById('todayBtn').addEventListener('click', () => { refDate = todayISO(homeTz); render(); });
+  document.getElementById('datePick').addEventListener('change', e => {
+    if (e.target.value) { refDate = e.target.value; render(); }
+  });
 
   document.getElementById('memberForm').addEventListener('submit', onSubmitMember);
   document.getElementById('cancelEditBtn').addEventListener('click', resetForm);

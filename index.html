@@ -27,6 +27,21 @@
         <h2>Team timeline</h2>
         <div id="teamFilter" class="chips"></div>
       </div>
+
+      <div class="board-controls">
+        <div class="ctrl">
+          <label for="homeTz">Show times in</label>
+          <input id="homeTz" list="zones" class="homeTz" placeholder="Your timezone" />
+        </div>
+        <div class="ctrl date-nav">
+          <button id="prevDay" class="btn icon-btn" title="Previous day">◀</button>
+          <input id="datePick" type="date" />
+          <button id="nextDay" class="btn icon-btn" title="Next day">▶</button>
+          <button id="todayBtn" class="btn btn-ghost">Today</button>
+          <span id="dateLabel" class="date-label"></span>
+        </div>
+      </div>
+
       <p class="hint">Drag the <b>scrubber</b> across the board to read everyone's local time at that instant. Green = inside working hours.</p>
       <div id="board" class="board">
         <div class="row axis">

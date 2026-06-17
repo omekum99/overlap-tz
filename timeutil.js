@@ -3,24 +3,17 @@
 /*
  * timeutil.js — all the timezone math, kept pure and small.
  *
- * The board is a fixed 24-hour axis in UTC (0 → 24). Every member's local
- * working hours are projected onto that axis. We use Luxon only to ask "what is
- * this zone's offset from UTC right now?" — everything else is plain arithmetic,
- * so it's easy to read and reason about.
+ * The board is a 24-hour axis rendered in a chosen *home timezone* (the viewer's
+ * own zone by default) on a chosen *date*. Everyone's local working hours are
+ * projected onto that axis. The date matters: offsets between zones change with
+ * daylight-saving, so "the same meeting" overlaps differently in January vs July.
+ *
+ * We lean on Luxon for the one hard part — converting a wall-clock time in one
+ * zone, on a specific date, into another zone (DST included). Everything else is
+ * plain arithmetic.
  */
 
 const { DateTime } = luxon;
-
-// Offset of a zone from UTC, in fractional hours. India (IST) → 5.5.
-function zoneOffsetHours(tz) {
-  return DateTime.now().setZone(tz).offset / 60;
-}
-
-// Current UTC time as a fractional hour on the axis (13.5 === 13:30).
-function nowUtcHour() {
-  const u = DateTime.utc();
-  return u.hour + u.minute / 60;
-}
 
 function mod24(h) { return ((h % 24) + 24) % 24; }
 
@@ -39,50 +32,75 @@ function hourLabel(h) {
   return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
 }
 
-// Project a member's local working band onto the UTC axis.
-// Returns 1 interval, or 2 when it crosses midnight UTC. Hours are fractional.
-function bandToUtcIntervals(start, end, tz) {
-  if (start === end) return [];
-  const off = zoneOffsetHours(tz);
-  const s = mod24(start - off);
-  const e = mod24(end - off);
+// ── date / zone helpers ──────────────────────────────────────────────────────
+function browserTz() { return DateTime.now().zoneName; }
+function todayISO(tz) { return DateTime.now().setZone(tz).toISODate(); }
+function isTodayISO(iso, tz) { return todayISO(tz) === iso; }
+function shiftISO(iso, days) { return DateTime.fromISO(iso).plus({ days }).toISODate(); }
+function prettyDate(iso) { return DateTime.fromISO(iso).toFormat('ccc, dd LLL yyyy'); }
+
+// The instant at `axisHour` on the home-tz day. (Fractional hours via minutes,
+// and startOf('day') so DST transition days are handled correctly.)
+function axisInstant(axisHour, isoDate, homeTz) {
+  return DateTime.fromISO(isoDate, { zone: homeTz }).startOf('day')
+    .plus({ minutes: Math.round(axisHour * 60) });
+}
+
+// Current time as a position on the home-tz axis (e.g. 13.5 === 13:30).
+function nowAxisHour(homeTz) {
+  const n = DateTime.now().setZone(homeTz);
+  return n.hour + n.minute / 60;
+}
+
+// ── projection: member's working hours → position on the home-tz axis ─────────
+// A member's wall-clock hour, on their own local `isoDate`, mapped to the axis.
+function memberHourToAxis(memberHour, memberTz, isoDate, homeTz) {
+  const inst = DateTime.fromISO(isoDate, { zone: memberTz }).startOf('day')
+    .plus({ hours: memberHour }).setZone(homeTz);
+  return mod24(inst.hour + inst.minute / 60);
+}
+
+// Project the working band onto the axis. 1 interval, or 2 when it crosses the
+// axis midnight. Hours fractional.
+function bandToAxisIntervals(member, isoDate, homeTz) {
+  const dur = mod24(member.end - member.start);
+  if (dur === 0) return [];
+  const s = memberHourToAxis(member.start, member.tz, isoDate, homeTz);
+  const e = mod24(s + dur);
   if (e > s) return [{ start: s, end: e }];
   return [{ start: s, end: 24 }, { start: 0, end: e }];   // wrapped → split
 }
 
-// Member's local clock + working flag at a given UTC hour on the axis.
-function localAtUtc(utcHour, member) {
-  const off = zoneOffsetHours(member.tz);
-  const local = mod24(utcHour + off);
-  return { label: hourLabel(local), working: isWithin(local, member.start, member.end) };
+// Member's local clock + working flag at a given axis hour.
+function localAt(axisHour, member, isoDate, homeTz) {
+  const inst = axisInstant(axisHour, isoDate, homeTz).setZone(member.tz);
+  const lh = inst.hour + inst.minute / 60;
+  return { label: hourLabel(lh), working: isWithin(lh, member.start, member.end) };
 }
 
-// Is this member working at the given UTC hour?
-function memberWorkingAtUtc(utcHour, member) {
-  const off = zoneOffsetHours(member.tz);
-  return isWithin(mod24(utcHour + off), member.start, member.end);
+function memberWorkingAt(axisHour, member, isoDate, homeTz) {
+  const inst = axisInstant(axisHour, isoDate, homeTz).setZone(member.tz);
+  return isWithin(inst.hour + inst.minute / 60, member.start, member.end);
 }
 
 /*
- * Meeting planner: find UTC windows where EVERY given member is working.
- * We sample the day in 15-minute slots (96/day) and AND the coverage together —
- * dead simple, and immune to the fractional offsets (e.g. +5:30) that trip up
- * interval-intersection code. Returns windows sorted longest-first.
+ * Meeting planner: find axis windows where EVERY given member is working.
+ * Sample the day in 15-minute slots (96/day) and AND the coverage — simple, and
+ * immune to fractional offsets (e.g. +5:30). Windows are sorted longest-first.
  */
-function findOverlapWindows(members) {
+function findOverlapWindows(members, isoDate, homeTz) {
   if (members.length === 0) return [];
   const SLOTS = 96, STEP = 24 / SLOTS;             // 0.25h
   const covered = new Array(SLOTS).fill(true);
   for (const m of members) {
     for (let i = 0; i < SLOTS; i++) {
-      if (!memberWorkingAtUtc(i * STEP, m)) covered[i] = false;
+      if (!memberWorkingAt(i * STEP, m, isoDate, homeTz)) covered[i] = false;
     }
   }
   if (covered.every(Boolean)) return [{ start: 0, end: 24, hours: 24 }];
   if (covered.every(v => !v)) return [];
 
-  // Rotate so we begin on an uncovered slot — then any wrap becomes one clean run.
-  const startAt = covered.indexOf(false);
+  const startAt = covered.indexOf(false);          // rotate so a wrap is one run
   const windows = [];
   let run = null;
   for (let k = 0; k < SLOTS; k++) {

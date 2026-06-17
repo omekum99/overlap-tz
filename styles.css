@@ -58,6 +58,16 @@ main { max-width: 1180px; margin: 1.25rem auto; padding: 0 1.25rem; display: fle
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem 1.25rem; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .25rem; }
 
+/* ── board controls (home tz + date nav) ── */
+.board-controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; margin: .25rem 0 .75rem; }
+.ctrl { display: flex; flex-direction: column; gap: .25rem; }
+.ctrl > label { font-size: .72rem; color: var(--muted); }
+.homeTz { min-width: 220px; }
+.date-nav { flex-direction: row; align-items: center; gap: .4rem; }
+.icon-btn { padding: .45rem .6rem; line-height: 1; }
+.date-label { font-size: .8rem; color: var(--muted); margin-left: .25rem; }
+input[type="date"] { color-scheme: dark; }
+
 /* ── board ── */
 .board { position: relative; user-select: none; }
 .row { display: grid; grid-template-columns: var(--label-w) 1fr; align-items: stretch; }
