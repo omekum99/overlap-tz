@@ -26,6 +26,8 @@ let homeTz = restoreHomeTz();
 let refDate = todayISO(homeTz);
 let scrubHour = nowAxisHour(homeTz);    // pinned scrubber position (home-tz hours)
 let activeTeams = new Set();            // team ids shown on the board; empty = everyone
+let plannerTeams = new Set();           // "Find a time" scope: team ids (empty = everyone)
+let plannerPeople = new Set();          // "Find a time" scope: specific member indices (overrides teams)
 let search = '';
 let userZoomed = localStorage.getItem('tzclock.userZoom') === '1';
 let zoom = +(localStorage.getItem('tzclock.zoom') || 48);
@@ -356,17 +358,61 @@ function slotIsBusy(startH, durH, cells) {
 }
 function refreshPlanner() { renderPlanner(); positionMarkers(); }
 
-function scopeLabel() {
-  if (activeTeams.size === 0) return 'everyone';
-  if (activeTeams.size === 1) return teamById([...activeTeams][0])?.name || 'team';
+// "Find a time" has its OWN scope, independent of what's drawn on the board:
+// pick whole teams, or a custom set of specific people (which takes precedence).
+function prunePlannerScope() {
+  for (const id of [...plannerTeams]) if (!teamById(id)) plannerTeams.delete(id);
+  for (const i of [...plannerPeople]) if (!state.members[i]) plannerPeople.delete(i);
+}
+function plannerScopeMembers() {
+  if (plannerPeople.size) return [...plannerPeople].map(i => state.members[i]).filter(Boolean);
+  return state.members.filter(m => plannerTeams.size === 0 || plannerTeams.has(m.teamId));
+}
+function plannerScopeLabel() {
+  if (plannerPeople.size) return `${plannerPeople.size} selected ${plannerPeople.size > 1 ? 'people' : 'person'}`;
+  if (plannerTeams.size === 0) return 'everyone';
+  if (plannerTeams.size === 1) return teamById([...plannerTeams][0])?.name || 'team';
   return 'the selected teams';
+}
+function renderPlannerScopeBar() {
+  const box = $('plannerScopeBar');
+  const chip = (attr, val, label, on, dot) => `<button class="tf-chip ${dot ? 'person-chip' : ''} ${on ? 'active' : ''}" data-${attr}="${val}">${dot || ''}${esc(label)}</button>`;
+  const teamsActive = plannerTeams.size > 0 && plannerPeople.size === 0;
+  let html = '<span class="filters-label">Teams</span>';
+  html += chip('pteam', '__all', 'Everyone', plannerTeams.size === 0 && plannerPeople.size === 0, '');
+  for (const t of state.teams) {
+    const dot = `<span class="dot" style="background:${TEAM_COLORS[t.color % TEAM_COLORS.length]}"></span>`;
+    html += chip('pteam', t.id, t.name, teamsActive && plannerTeams.has(t.id), dot);
+  }
+  if (state.members.length) {
+    html += '<span class="scope-sep">Focus people</span>';
+    state.members.forEach((m, gi) => {
+      const dot = `<span class="dot" style="background:${colorOf(m)}"></span>`;
+      html += chip('pperson', gi, m.name, plannerPeople.has(gi), dot);
+    });
+  }
+  box.innerHTML = html;
+  box.querySelectorAll('[data-pteam]').forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.pteam;
+    plannerPeople.clear();
+    if (id === '__all') plannerTeams.clear();
+    else { plannerTeams.has(id) ? plannerTeams.delete(id) : plannerTeams.add(id); }
+    refreshPlanner();
+  }));
+  box.querySelectorAll('[data-pperson]').forEach(b => b.addEventListener('click', () => {
+    const gi = +b.dataset.pperson;
+    plannerPeople.has(gi) ? plannerPeople.delete(gi) : plannerPeople.add(gi);
+    refreshPlanner();
+  }));
 }
 
 function renderPlanner() {
-  const scope = scopeMembers();
+  prunePlannerScope();
+  renderPlannerScopeBar();
+  const scope = plannerScopeMembers();
   const working = scope.filter(m => !isMemberOff(m, refDate));
   const offToday = scope.filter(m => isMemberOff(m, refDate));
-  $('plannerScopeName').textContent = scopeLabel();
+  $('plannerScopeName').textContent = plannerScopeLabel();
 
   const box = $('planner');
   const offNote = offToday.length

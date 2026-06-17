@@ -100,6 +100,8 @@ textarea { resize: vertical; }
 .app {
   flex: 1; min-height: 0; width: 100%; max-width: 1500px; margin: 0 auto;
   display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: var(--gap);
+  align-items: start;                /* cards size to content, not the full height */
+  overflow-y: auto;                  /* if the whole thing is tall, scroll the app */
   padding: var(--gap) 1.4rem 1.1rem;
 }
 .card { background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -128,7 +130,8 @@ textarea { resize: vertical; }
 .scrub-readout { margin-left: auto; font-family: var(--font-mono); font-weight: 700; font-size: .82rem; color: var(--accent); white-space: nowrap; }
 
 /* ── timeline board ── */
-.board { flex: 1; min-height: 130px; overflow: auto; border: 1px solid var(--line);
+/* sizes to the lanes it holds, capped — then scrolls vertically (no dead space) */
+.board { flex: none; min-height: 96px; max-height: 48vh; overflow: auto; border: 1px solid var(--line);
   background: var(--bg); scrollbar-color: var(--line-strong) transparent; }
 .board::-webkit-scrollbar { height: 12px; width: 10px; }
 .board::-webkit-scrollbar-thumb { background: var(--line-strong); border: 3px solid var(--bg); border-radius: 0; }
@@ -190,6 +193,10 @@ textarea { resize: vertical; }
 .planner-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: .5rem; }
 .planner-head h2 { font-size: 1rem; }
 .planner-head p { margin: .1rem 0 0; }
+.scope-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin-bottom: .6rem; }
+.scope-sep { font-size: .62rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 0 .15rem 0 .5rem; }
+.scope-bar .filters-label { margin-right: .1rem; }
+.tf-chip.person-chip { padding: .22rem .55rem; }
 .planner { display: flex; flex-wrap: wrap; gap: .6rem; align-items: stretch; }
 .off-note, .block-note { margin: 0; flex-basis: 100%; }
 .window { border: 1px solid var(--line); padding: .5rem .65rem; background: var(--bg-3); min-width: 210px; flex: 1; }
