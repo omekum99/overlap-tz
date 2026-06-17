@@ -9,9 +9,14 @@ URL. Sharing the workspace = copying the URL.
 ## Why it's built this way
 
 - **Plain HTML/CSS/JS** — no React, no build step, no `node_modules`. Open the file and it runs.
-- **State lives in the URL.** Your team is encoded with [`lz-string`](https://github.com/pieroxy/lz-string)
-  (`compressToEncodedURIComponent`) and stored in `location.hash`. The browser decompresses
-  it on load. A whole team fits comfortably under the ~2000-char limit chat apps respect.
+- **State lives in the URL.** Your team is packed into `location.hash` in three stages: keys
+  are minified (`name`→`n`, …) and common timezones are replaced by a small index into a
+  frozen [zone dictionary](state.js) (so `America/Argentina/Buenos_Aires` costs ~2 chars, not
+  30); the result is compressed with [`lz-string`](https://github.com/pieroxy/lz-string)
+  (`compressToEncodedURIComponent`). The dictionary alone trims ~30% off a typical team's URL.
+  A versioned `v<N>:` envelope frames the format so older clients fail closed instead of
+  mis-reading a newer link, and every link ever produced still decodes. A 50-person team fits
+  comfortably under the ~2000-char limit chat apps respect.
 - **Timezone math with [Luxon](https://moment.github.io/luxon/).** Working hours are projected
   from each person's local zone onto a shared UTC axis.
 
@@ -102,7 +107,7 @@ python3 -m http.server 8000   # then visit http://localhost:8000
 |---------------|--------------------------------------------------------------------|
 | `index.html`  | Markup + loads the libraries and scripts                           |
 | `styles.css`  | All styling — the single design system + app-shell layout          |
-| `state.js`    | URL ↔ config: key-minify, lz-string compress/decompress, envelope+schema versioning, alias-tolerant zone validation |
+| `state.js`    | URL ↔ config: key-minify, zone dictionary, lz-string compress/decompress, envelope+schema versioning, alias-tolerant zone validation |
 | `tzcities.js` | Friendly timezone search (city/country/alias → IANA)               |
 | `timeutil.js` | Timezone math: date/home-tz projection, scrubber, overlap, slots   |
 | `store.js`    | Private per-workspace meetings in localStorage                     |

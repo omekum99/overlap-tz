@@ -31,11 +31,52 @@ const HASH_PREFIX = 'w=';        // hash looks like  #w=<compressed>
 //                 fails closed (empty board) instead of being mis-parsed.
 //   • SCHEMA    — the shape of the decoded object. Stored as `v` inside the blob
 //                 and run through MIGRATIONS on the way in so old links keep working.
-const ENVELOPE_VERSION = 1;
+const ENVELOPE_VERSION = 2;      // v2 added the zone dictionary (integer tz on the wire)
 const ENVELOPE_PREFIX = 'v' + ENVELOPE_VERSION + ':';
 const SCHEMA_VERSION = 2;
 const DEFAULT_WEEKEND = [6, 7];  // Sat, Sun (Luxon weekday numbering)
 const EMPTY_STATE = { org: '', wid: '', teams: [], members: [] };
+
+/*
+ * ZONE_DICT — the wire dictionary for member timezones.
+ *
+ * A member's IANA zone is the single biggest field in the URL (e.g.
+ * "America/Argentina/Buenos_Aires" = 30 chars). When the zone is one of these
+ * common business hubs we store its *index* (1–2 chars) instead; uncurated zones
+ * still travel as the full string. JSON's number-vs-string typing tells the two
+ * apart on decode, so no extra tag is needed.
+ *
+ * ⚠️ APPEND-ONLY. These indices are a permanent part of every shared URL. Never
+ * reorder or remove an entry — only append. (This is deliberately separate from
+ * the display/search list in tzcities.js, which is free to be reordered.)
+ */
+const ZONE_DICT = [
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles',
+  'America/Toronto', 'America/Vancouver', 'America/Mexico_City', 'America/Sao_Paulo',
+  'America/Argentina/Buenos_Aires', 'America/Bogota', 'America/Lima', 'America/Santiago',
+  'Europe/London', 'Europe/Dublin', 'Europe/Lisbon', 'Europe/Madrid', 'Europe/Paris', 'Europe/Berlin',
+  'Europe/Amsterdam', 'Europe/Brussels', 'Europe/Zurich', 'Europe/Rome', 'Europe/Stockholm', 'Europe/Oslo',
+  'Europe/Copenhagen', 'Europe/Helsinki', 'Europe/Warsaw', 'Europe/Prague', 'Europe/Vienna', 'Europe/Athens',
+  'Europe/Istanbul', 'Europe/Moscow', 'Europe/Kyiv', 'Asia/Dubai', 'Asia/Riyadh', 'Asia/Jerusalem',
+  'Africa/Cairo', 'Africa/Nairobi', 'Africa/Lagos', 'Africa/Johannesburg', 'Africa/Casablanca',
+  'Asia/Kolkata', 'Asia/Karachi', 'Asia/Dhaka', 'Asia/Colombo', 'Asia/Kathmandu', 'Asia/Bangkok',
+  'Asia/Jakarta', 'Asia/Singapore', 'Asia/Kuala_Lumpur', 'Asia/Manila', 'Asia/Ho_Chi_Minh',
+  'Asia/Hong_Kong', 'Asia/Shanghai', 'Asia/Taipei', 'Asia/Seoul', 'Asia/Tokyo',
+  'Australia/Sydney', 'Australia/Perth', 'Pacific/Auckland', 'Pacific/Honolulu', 'UTC',
+];
+const ZONE_INDEX = new Map(ZONE_DICT.map((tz, i) => [tz, i]));
+
+// IANA string → wire value (index when curated, else the string itself).
+function tzToWire(tz) {
+  const i = ZONE_INDEX.get(tz);
+  return i === undefined ? tz : i;
+}
+// Wire value → IANA string. Accepts both the v2 integer form and the v1 string
+// form, so every link ever produced still decodes.
+function tzFromWire(t) {
+  if (typeof t === 'number') return ZONE_DICT[t] || '';
+  return typeof t === 'string' ? t : '';
+}
 
 // Schema migrations: MIGRATIONS[n] upgrades a wire object from version n → n+1.
 // Add an entry whenever SCHEMA_VERSION is bumped; old URLs then upgrade on load.
@@ -102,7 +143,7 @@ function encodeState(state) {
     o: state.org || '',
     tm: state.teams.map(t => ({ i: t.id, n: t.name, c: t.color })),
     mb: state.members.map(m => {
-      const out = { n: m.name, t: m.tz, s: m.start, e: m.end, g: m.teamId || '' };
+      const out = { n: m.name, t: tzToWire(m.tz), s: m.start, e: m.end, g: m.teamId || '' };
       if (!sameWeekend(m.weekend)) out.wk = m.weekend;   // only store when non-default
       return out;
     }),
@@ -140,13 +181,13 @@ function decodeState(encoded) {
     const teamIds = new Set(teams.map(t => t.id));
 
     const members = (Array.isArray(wire.mb) ? wire.mb : [])
-      .filter(m => m && typeof m.n === 'string' && isValidZone(m.t)
-                && isWorkHour(m.s) && isWorkHour(m.e))
+      .filter(m => m && typeof m.n === 'string' && isWorkHour(m.s) && isWorkHour(m.e))
       .map(m => ({
-        name: m.n, tz: m.t, start: m.s, end: m.e,
+        name: m.n, tz: tzFromWire(m.t), start: m.s, end: m.e,   // resolve dict index → IANA first
         teamId: teamIds.has(m.g) ? m.g : '',
         weekend: Array.isArray(m.wk) ? m.wk.filter(d => d >= 1 && d <= 7) : DEFAULT_WEEKEND.slice(),
-      }));
+      }))
+      .filter(m => isValidZone(m.tz));                          // then drop anything that didn't resolve
 
     return {
       org: typeof wire.o === 'string' ? wire.o : '',
