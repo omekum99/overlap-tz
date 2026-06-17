@@ -64,14 +64,15 @@ function encodeState(state) {
       return out;
     }),
   };
-  return LZString.compressToEncodedURIComponent(JSON.stringify(wire));
+  return 'v1:' + LZString.compressToEncodedURIComponent(JSON.stringify(wire));
 }
 
 // ── deserialize (never throws — corrupt/truncated URLs yield an empty board) ─
 function decodeState(encoded) {
   try {
     if (!encoded) return clone(EMPTY_STATE);
-    const json = LZString.decompressFromEncodedURIComponent(encoded);
+    const raw = encoded.startsWith('v1:') ? encoded.slice(3) : encoded;
+    const json = LZString.decompressFromEncodedURIComponent(raw);
     if (!json) return clone(EMPTY_STATE);
     const wire = JSON.parse(json);
     if (!wire || typeof wire !== 'object') return clone(EMPTY_STATE);
