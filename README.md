@@ -28,25 +28,45 @@ python3 -m http.server 8000   # then visit http://localhost:8000
 
 ## Features
 
-- **24h UTC timeline** with a live "now" marker.
+- **24h timeline in *your* timezone** — defaults to your browser's zone (remembered), or
+  pick any zone. A live "now" marker shows the current time.
+- **Date navigation** — ◀ / ▶ / date-picker / Today. Offsets are computed *per date*, so
+  overlaps reflect daylight-saving differences (the same meeting overlaps differently in
+  January vs July).
 - **Draggable scrubber** — drag across the board to read every person's local time at that
   instant; green = they're inside working hours. (Arrow keys nudge it too.)
-- **Add / edit / remove teammates** with timezone autocomplete and overnight-shift support.
+- **Add / edit / remove teammates** — timezone autocomplete, 30-minute granularity,
+  overnight-shift support, and per-person **days off** (incl. Fri/Sat-weekend regions).
 - **🎲 Dummy users** — one click adds a random teammate for "what if we hire in X?" planning.
 - **Sub-teams** — create Marketing / Tech / etc., color-code them, filter the board.
-- **Meeting planner** — finds the UTC windows where everyone (or a selected team) overlaps,
-  shown in each person's local time.
+- **Meeting planner** — finds the windows where everyone available overlaps (people off that
+  day are excluded), then offers **clickable slots** for your chosen meeting length.
+- **Meetings + minutes (MOM)** — pick a slot to create a meeting with notes; saved privately
+  in your browser (`localStorage`), keyed to the workspace. Mark booked/proposed, edit, delete.
+- **Calendar export** — download a standard **.ics** or open a prefilled **Google Calendar**
+  link. This is how a private meeting gets shared — no backend, no OAuth.
+- **12h / 24h toggle** and **member search**.
 - **Share** — copies the URL and warns if it's getting long.
+
+### What's in the URL vs your browser
+
+- **URL hash** = the shared *team config* (org, teams, members, working hours). Small and
+  shareable. This is the save file.
+- **localStorage** = your *private* data (saved meetings + MOM notes) for this device, keyed
+  by a stable workspace id (`wid`) that rides along in the URL. Not shared; export to a
+  calendar to share a meeting.
 
 ## Files
 
-| File          | Job                                                          |
-|---------------|--------------------------------------------------------------|
-| `index.html`  | Markup + loads the libraries and scripts                     |
-| `styles.css`  | All styling (plain CSS)                                       |
-| `state.js`    | URL ↔ state: key-minify, lz-string compress/decompress, validate |
-| `timeutil.js` | Timezone math: band projection, scrubber, overlap finder     |
-| `app.js`      | UI: rendering, scrubber, forms, teams, planner, share        |
+| File          | Job                                                                |
+|---------------|--------------------------------------------------------------------|
+| `index.html`  | Markup + loads the libraries and scripts                           |
+| `styles.css`  | All styling (plain CSS)                                            |
+| `state.js`    | URL ↔ config: key-minify, lz-string compress/decompress, validate  |
+| `timeutil.js` | Timezone math: date/home-tz projection, scrubber, overlap, slots   |
+| `store.js`    | Private per-workspace meetings in localStorage                     |
+| `calendar.js` | .ics file + Google Calendar link generation                        |
+| `app.js`      | UI: rendering, scrubber, forms, teams, planner, meetings, share    |
 
 ## Deploy to GitHub Pages
 
