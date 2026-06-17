@@ -30,14 +30,18 @@ let boardCustom = false;                // board "Custom" mode: pick specific pe
 let boardPeople = new Set();            // member indices shown when boardCustom
 let plannerTeams = new Set();           // "Find a time" scope: team ids (empty = everyone)
 let plannerPeople = new Set();          // "Find a time" scope: specific member indices (overrides teams)
+let showBands = localStorage.getItem('tzclock.bands') !== '0';    // working-hour bands
 let dayNight = localStorage.getItem('tzclock.daynight') === '1';   // day/night gradient view
 let compact = localStorage.getItem('tzclock.compact') === '1';     // dense rows
+let expandedPeople = new Set();                                    // per-person expanded lanes
+let povPerson = -1;                                                // person whose POV is shown (-1 = device tz)
 let search = '';
 let userZoomed = localStorage.getItem('tzclock.userZoom') === '1';
 let zoom = +(localStorage.getItem('tzclock.zoom') || 48);
 let editingIndex = -1;
 
 const $ = id => document.getElementById(id);
+function toggleSync(id, on) { const el = $(id); if (el) el.classList.toggle('active', on); }
 function restoreHomeTz() {
   const tz = localStorage.getItem('tzclock.home') || browserTz() || 'UTC';
   return isValidZone(tz) ? tz : 'UTC';
@@ -54,11 +58,10 @@ document.addEventListener('DOMContentLoaded', () => {
   meetings = loadMeetings(state.wid);
 
   document.documentElement.style.setProperty('--hour-w', zoom + 'px');
-  const f12 = localStorage.getItem('tzclock.fmt12') === '1';
-  setHour12(f12); $('fmt12').checked = f12;
+  const f12 = localStorage.getItem('tzclock.fmt12');
+  if (f12 !== null) setHour12(f12 === '1');
   document.documentElement.classList.toggle('compact-mode', compact);
-  $('compactBtn').classList.toggle('active', compact);
-  $('dayNightBtn').classList.toggle('active', dayNight);
+  $('stage').classList.toggle('daynight-active', dayNight);
   if (localStorage.getItem('tzclock.mtgOpen') === '0') $('toggleMeetings').closest('.meetings-card').classList.add('collapsed');
 
   initDaysOff();
@@ -92,9 +95,12 @@ function persistMeetings() { saveMeetings(state.wid, meetings); }
 // ── render ────────────────────────────────────────────────────────────────────
 function render() {
   $('org').value = state.org;
-  $('homeTz').value = labelForTz(homeTz);
   $('datePick').value = refDate;
-  $('dateLabel').innerHTML = `📅 <b>${esc(prettyDate(refDate))}</b>` + (isTodayISO(refDate, homeTz) ? ' · today' : '');
+  // Sync toggle buttons
+  toggleSync('bandsBtn', showBands);
+  toggleSync('dayNightBtn', dayNight);
+  toggleSync('compactBtn', compact);
+  toggleSync('fmt12Btn', HOUR_12);
   pruneActiveTeams();
   renderDateStrip();
   renderTeamFilter();
@@ -111,11 +117,17 @@ function render() {
 }
 
 // Members visible on the board (team filter / custom people + search).
+// POV person is always sorted first.
 function visibleEntries() {
   const q = search.trim().toLowerCase();
-  return state.members
+  let entries = state.members
     .map((m, gi) => ({ m, gi }))
     .filter(e => inBoardScope(e.gi, e.m) && (!q || e.m.name.toLowerCase().includes(q)));
+  if (povPerson >= 0) {
+    const idx = entries.findIndex(e => e.gi === povPerson);
+    if (idx > 0) { const p = entries.splice(idx, 1)[0]; entries.unshift(p); }
+  }
+  return entries;
 }
 function inBoardScope(gi, m) {
   if (boardCustom) return boardPeople.has(gi);
@@ -143,7 +155,7 @@ function renderDateStrip() {
     const dt = DateTime.fromISO(iso);
     const sel = iso === refDate, today = isTodayISO(iso, homeTz);
     html += `<button class="day-cell ${sel ? 'sel' : ''} ${today ? 'today' : ''}" data-iso="${iso}">
-      <span class="dc-dow">${dt.toFormat('ccc')}</span><span class="dc-day">${dt.toFormat('dd')}</span><span class="dc-mon">${dt.toFormat('LLL')}</span></button>`;
+      <span class="dc-dow">${dt.toFormat('ccc')}</span><span class="dc-day">${dt.toFormat('dd')}</span><span class="dc-mon">${dt.toFormat('LLL')}</span>${today ? '<span class="dc-dot">●</span>' : ''}</button>`;
   }
   box.innerHTML = html;
   box.querySelectorAll('.day-cell').forEach(b => b.addEventListener('click', () => { refDate = b.dataset.iso; render(); }));
@@ -156,12 +168,12 @@ function renderTeamFilter() {
   const box = $('teamFilter');
   const chip = (attr, val, label, on, dot) =>
     `<button class="tf-chip ${dot ? 'person-chip' : ''} ${on ? 'active' : ''}" data-${attr}="${val}">${dot || ''}${esc(label)}</button>`;
-  let html = chip('team', '__all', 'Everyone', !boardCustom && activeTeams.size === 0, '');
+  let html = chip('team', '__all', '🌐 Everyone', !boardCustom && activeTeams.size === 0, '');
   for (const t of state.teams) {
     const dot = `<span class="dot" style="background:${TEAM_COLORS[t.color % TEAM_COLORS.length]}"></span>`;
     html += chip('team', t.id, t.name, !boardCustom && activeTeams.has(t.id), dot);
   }
-  html += chip('team', '__custom', 'Custom', boardCustom, '');
+  html += chip('team', '__custom', '⭐ Custom', boardCustom, '');
   if (boardCustom && state.members.length) {
     html += '<span class="scope-sep">People</span>';
     state.members.forEach((m, gi) => {
@@ -208,18 +220,65 @@ function localHourAtAxis(axisH, m) {
   const inst = axisInstant(axisH, refDate, homeTz).setZone(m.tz);
   return inst.hour + inst.minute / 60;
 }
-// Day/night colour ramp: deep night → dawn red → midday gold → dusk → night.
-const DN_KEYS = [
-  { h: 0, c: [13, 17, 38] }, { h: 4.5, c: [22, 24, 52] }, { h: 5.5, c: [60, 38, 74] },
-  { h: 6.5, c: [168, 78, 64] }, { h: 7.5, c: [226, 138, 74] }, { h: 9, c: [243, 198, 96] },
-  { h: 12, c: [250, 222, 120] }, { h: 15, c: [243, 198, 96] }, { h: 16.5, c: [226, 138, 74] },
-  { h: 18, c: [168, 78, 64] }, { h: 19.5, c: [60, 38, 74] }, { h: 21, c: [22, 24, 52] },
-  { h: 24, c: [13, 17, 38] },
+// Day/night colour palettes — pick one from settings.
+const DN_PALETTES = [
+  { name: 'Warm Ember', keys: [
+    { h:0,c:[10,10,30]},{h:4,c:[20,15,50]},{h:5,c:[80,25,50]},{h:6,c:[180,70,50]},
+    { h:7,c:[220,140,60]},{h:9,c:[245,200,80]},{h:12,c:[253,230,138]},
+    { h:15,c:[245,200,80]},{h:17,c:[220,140,60]},{h:18,c:[180,70,50]},
+    { h:19,c:[100,30,55]},{h:21,c:[40,20,60]},{h:24,c:[10,10,30]},
+  ]},
+  { name: 'Soft Gray', keys: [
+    { h:0,c:[40,40,42]},{h:4,c:[50,50,52]},{h:5,c:[75,75,77]},{h:6,c:[115,115,117]},
+    { h:7,c:[155,155,157]},{h:9,c:[195,195,197]},{h:12,c:[220,220,222]},
+    { h:15,c:[195,195,197]},{h:17,c:[155,155,157]},{h:18,c:[115,115,117]},
+    { h:19,c:[75,75,77]},{h:21,c:[50,50,52]},{h:24,c:[40,40,42]},
+  ]},
+  { name: 'Ocean Blue', keys: [
+    { h:0,c:[5,10,35]},{h:4,c:[10,25,55]},{h:5,c:[20,55,100]},{h:6,c:[40,110,170]},
+    { h:7,c:[80,160,210]},{h:9,c:[140,200,235]},{h:12,c:[180,225,245]},
+    { h:15,c:[140,200,235]},{h:17,c:[80,160,210]},{h:18,c:[40,110,170]},
+    { h:19,c:[20,55,100]},{h:21,c:[10,25,55]},{h:24,c:[5,10,35]},
+  ]},
+  { name: 'Mint Forest', keys: [
+    { h:0,c:[5,20,15]},{h:4,c:[10,35,25]},{h:5,c:[20,70,50]},{h:6,c:[45,120,85]},
+    { h:7,c:[80,165,120]},{h:9,c:[130,205,165]},{h:12,c:[170,225,195]},
+    { h:15,c:[130,205,165]},{h:17,c:[80,165,120]},{h:18,c:[45,120,85]},
+    { h:19,c:[20,70,50]},{h:21,c:[10,35,25]},{h:24,c:[5,20,15]},
+  ]},
+  { name: 'Lavender Dusk', keys: [
+    { h:0,c:[20,10,35]},{h:4,c:[35,20,55]},{h:5,c:[65,40,90]},{h:6,c:[110,75,140]},
+    { h:7,c:[155,120,180]},{h:9,c:[200,175,220]},{h:12,c:[225,205,240]},
+    { h:15,c:[200,175,220]},{h:17,c:[155,120,180]},{h:18,c:[110,75,140]},
+    { h:19,c:[65,40,90]},{h:21,c:[35,20,55]},{h:24,c:[20,10,35]},
+  ]},
+  { name: 'Desert Sand', keys: [
+    { h:0,c:[30,20,15]},{h:4,c:[45,30,20]},{h:5,c:[85,55,35]},{h:6,c:[145,105,65]},
+    { h:7,c:[195,160,110]},{h:9,c:[225,200,155]},{h:12,c:[240,220,185]},
+    { h:15,c:[225,200,155]},{h:17,c:[195,160,110]},{h:18,c:[145,105,65]},
+    { h:19,c:[85,55,35]},{h:21,c:[45,30,20]},{h:24,c:[30,20,15]},
+  ]},
+  { name: 'Rose Blush', keys: [
+    { h:0,c:[30,10,15]},{h:4,c:[45,18,25]},{h:5,c:[85,35,50]},{h:6,c:[145,70,90]},
+    { h:7,c:[195,115,140]},{h:9,c:[225,170,190]},{h:12,c:[240,200,215]},
+    { h:15,c:[225,170,190]},{h:17,c:[195,115,140]},{h:18,c:[145,70,90]},
+    { h:19,c:[85,35,50]},{h:21,c:[45,18,25]},{h:24,c:[30,10,15]},
+  ]},
+  { name: 'Cool Arctic', keys: [
+    { h:0,c:[15,20,35]},{h:4,c:[20,30,50]},{h:5,c:[35,55,85]},{h:6,c:[65,100,145]},
+    { h:7,c:[110,155,195]},{h:9,c:[165,200,225]},{h:12,c:[200,225,240]},
+    { h:15,c:[165,200,225]},{h:17,c:[110,155,195]},{h:18,c:[65,100,145]},
+    { h:19,c:[35,55,85]},{h:21,c:[20,30,50]},{h:24,c:[15,20,35]},
+  ]},
 ];
+
+const DN_KEYS = DN_PALETTES[1].keys;  // Soft Gray
+function dnKeys() { return DN_KEYS; }
 function dnColor(h) {
+  const keys = dnKeys();
   h = mod24(h);
-  for (let i = 0; i < DN_KEYS.length - 1; i++) {
-    const a = DN_KEYS[i], b = DN_KEYS[i + 1];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const a = keys[i], b = keys[i + 1];
     if (h >= a.h && h <= b.h) {
       const t = (h - a.h) / (b.h - a.h || 1);
       const c = a.c.map((v, k) => Math.round(v + (b.c[k] - v) * t));
@@ -246,39 +305,68 @@ function renderLanes() {
   for (const { m, gi } of entries) {
     const off = isMemberOff(m, refDate);
     const offset = utcOffsetLabel(m.tz, refDate);
+    const isExpanded = expandedPeople.has(gi);
+    const isPov = gi === povPerson;
     const row = document.createElement('div');
-    row.className = 'tl-row lane' + (off ? ' off' : '');
+    row.className = 'tl-row lane' + (off ? ' off' : '') + (isPov ? ' pov' : '');
     row.dataset.gi = gi;
 
-    const bands = bandToAxisIntervals(m, refDate, homeTz)
-      .map(iv => `<div class="band" style="left:${iv.start / 24 * 100}%;width:${(iv.end - iv.start) / 24 * 100}%;--bc:${colorOf(m)}"></div>`)
-      .join('');
+    const bands = showBands
+      ? bandToAxisIntervals(m, refDate, homeTz)
+        .map(iv => `<div class="band" style="left:${iv.start / 24 * 100}%;width:${(iv.end - iv.start) / 24 * 100}%;--bc:${colorOf(m)}"></div>`)
+        .join('')
+      : '';
 
     let dn = '', trackStyle = '';
     if (dayNight) {
       trackStyle = ` style="background:${dayNightGradient(m)}"`;
       const noon = memberHourToAxis(12, m.tz, refDate, homeTz);
       const mid = memberHourToAxis(0, m.tz, refDate, homeTz);
-      dn = `<span class="celestial sun" style="left:${noon / 24 * 100}%" title="Their midday">☀</span>
-            <span class="celestial moon" style="left:${mid / 24 * 100}%" title="Their midnight">☾</span>`;
+      const sunrise = memberHourToAxis(6, m.tz, refDate, homeTz);
+      const sunset = memberHourToAxis(18, m.tz, refDate, homeTz);
+      dn = `<span class="celestial sun" style="left:${noon / 24 * 100}%" title="Their midday ☀">☀️</span>
+            <span class="celestial moon" style="left:${mid / 24 * 100}%" title="Their midnight ☾">☾</span>
+            <span class="celestial dawn" style="left:${sunrise / 24 * 100}%" title="Their sunrise">⬆</span>
+            <span class="celestial dusk" style="left:${sunset / 24 * 100}%" title="Their sunset">⬇</span>`;
     }
 
+    const expandIcon = isExpanded ? '▾' : '▸';
     row.innerHTML = `
       <div class="tl-label">
         <span class="dot" style="background:${colorOf(m)}"></span>
+        <button class="lane-expand ${isExpanded ? 'expanded' : ''}" data-expand="${gi}" title="Toggle details">${expandIcon}</button>
         <div class="who">
           <div class="name">${esc(m.name)}${off ? ' <span class="tag-off">off</span>' : ''}
             <span class="off-pill mono">${offset}</span></div>
           <div class="meta">${esc(labelForTz(m.tz))} · ${hourLabel(m.start)}–${hourLabel(m.end)}</div>
         </div>
-        <button class="lane-tz" data-ltz="${esc(m.tz)}" title="Show the board in ${esc(m.name)}'s timezone">⌖</button>
+        <button class="lane-tz ${gi === povPerson ? 'active' : ''}" data-ltz="${esc(m.tz)}" data-gi="${gi}" title="${gi === povPerson ? esc(m.name) + "'s view — click to reset" : 'View board from ' + esc(m.name) + "'s perspective"}">⌖</button>
       </div>
       <div class="tl-track work${dayNight ? ' dn' : ''}"${trackStyle}>${dn}${bands}<span class="live" id="live-${gi}"></span></div>`;
     wrap.appendChild(row);
+
+    if (isExpanded) {
+      const localNow = localAt(scrubHour, m, refDate, homeTz);
+      const detail = document.createElement('div');
+      detail.className = 'tl-row lane-detail open';
+      detail.innerHTML = `<div class="tl-label"></div>
+        <div class="tl-track">
+          <span class="utc-big">${offset}</span>
+          <span>📍 ${esc(labelForTz(m.tz))}</span>
+          <span>🕐 <span class="local-clock">${localNow.label}</span></span>
+          <span>⏰ ${hourLabel(m.start)}–${hourLabel(m.end)}</span>
+          ${off ? '<span>🔴 Off today</span>' : '<span>🟢 Working today</span>'}
+        </div>`;
+      wrap.appendChild(detail);
+    }
   }
   wrap.querySelectorAll('.lane-tz').forEach(b => b.addEventListener('click', e => {
     e.stopPropagation();
-    homeTz = b.dataset.ltz; localStorage.setItem('tzclock.home', homeTz); render();
+    const gi = +b.dataset.gi;
+    // Toggle: clicking the active POV resets to device timezone
+    if (povPerson === gi) { povPerson = -1; localStorage.removeItem('tzclock.home'); homeTz = browserTz(); }
+    else { povPerson = gi; homeTz = b.dataset.ltz; localStorage.setItem('tzclock.home', homeTz); }
+    render();
   }));
 }
 
@@ -297,7 +385,17 @@ function hourFromClientX(clientX) {
 function bindBoard() {
   const inner = $('boardInner');
   const board = $('board');
+  const lanes = $('lanes');
   let downX = null;
+
+  // Per-person expand/collapse (single delegation, not per-render)
+  lanes.addEventListener('click', e => {
+    const btn = e.target.closest('[data-expand]');
+    if (!btn) return;
+    const gi = +btn.dataset.expand;
+    expandedPeople.has(gi) ? expandedPeople.delete(gi) : expandedPeople.add(gi);
+    renderLanes(); positionMarkers(); updateScrub();
+  });
 
   inner.addEventListener('pointermove', e => {
     if (e.target.closest('.tl-label')) return;
@@ -379,7 +477,11 @@ function renderBlocks() {
 }
 
 function updateScrub(h = scrubHour) {
-  $('scrubReadout').textContent = `${DateTime.fromISO(refDate).toFormat('ccc dd LLL')} · ${hourLabel(h)} · ${labelForTz(homeTz)}`;
+  const dateStr = DateTime.fromISO(refDate).toFormat('ccc dd LLL');
+  const povLabel = povPerson >= 0 && state.members[povPerson]
+    ? esc(state.members[povPerson].name) + "'s view"
+    : esc(labelForTz(homeTz));
+  $('scrubReadout').innerHTML = `<b>${esc(dateStr)}</b> · ${hourLabel(h)} · ${povLabel}`;
   for (const { m, gi } of visibleEntries()) {
     const el = $('live-' + gi);
     if (!el) continue;
@@ -479,7 +581,7 @@ function renderPlannerScopeBar() {
   const chip = (attr, val, label, on, dot) => `<button class="tf-chip ${dot ? 'person-chip' : ''} ${on ? 'active' : ''}" data-${attr}="${val}">${dot || ''}${esc(label)}</button>`;
   const teamsActive = plannerTeams.size > 0 && plannerPeople.size === 0;
   let html = '<span class="filters-label">Teams</span>';
-  html += chip('pteam', '__all', 'Everyone', plannerTeams.size === 0 && plannerPeople.size === 0, '');
+  html += chip('pteam', '__all', '🌐 Everyone', plannerTeams.size === 0 && plannerPeople.size === 0, '');
   for (const t of state.teams) {
     const dot = `<span class="dot" style="background:${TEAM_COLORS[t.color % TEAM_COLORS.length]}"></span>`;
     html += chip('pteam', t.id, t.name, teamsActive && plannerTeams.has(t.id), dot);
@@ -528,22 +630,13 @@ function renderPlanner() {
   const blockedCount = meetings.filter(m => DateTime.fromISO(m.startUTC).setZone(homeTz).toISODate() === refDate).length;
   const attendees = working.map(m => m.name);
 
-  const top = windows.slice(0, 2).map((w, i) => {
-    const rows = working.map(m =>
-      `<tr><td>${esc(m.name)}</td><td class="mono">${localAt(w.start, m, refDate, homeTz).label}–${localAt(w.end, m, refDate, homeTz).label}</td></tr>`).join('');
-    return `<div class="window ${i === 0 ? 'best' : ''}">
-      <div class="window-head"><span class="badge-utc">${hourLabel(w.start)}–${hourLabel(w.end)}</span>
-        <span class="muted small">${w.hours.toFixed(2).replace(/\.?0+$/, '')}h${i === 0 ? ' · best' : ''}</span></div>
-      <table class="window-tbl">${rows}</table></div>`;
-  }).join('');
-
   const blockNote = blockedCount
-    ? `<p class="muted small block-note">⛌ ${blockedCount} block${blockedCount > 1 ? 's' : ''} on this day reduce${blockedCount > 1 ? '' : 's'} availability.</p>` : '';
+    ? `<p class="muted small block-note">⛌ ${blockedCount} block${blockedCount > 1 ? 's' : ''} on this day.</p>` : '';
   const slotBtns = slots.length
-    ? `<div class="slots"><span class="muted small">${durMin}-min slots:</span>${slots.map(s => `<button class="slot" data-start="${s.start}">${hourLabel(s.start)}</button>`).join('')}</div>`
+    ? `<div class="slots"><span class="muted small">${durMin} min · </span>${slots.slice(0, 6).map(s => `<button class="slot" data-start="${s.start}">${hourLabel(s.start)}</button>`).join('')}</div>`
     : `<p class="muted small">No free ${durMin}-min slot${blockedCount ? ' (time is blocked)' : ''} — try shorter or another date.</p>`;
 
-  box.innerHTML = offNote + blockNote + top + slotBtns;
+  box.innerHTML = offNote + blockNote + slotBtns;
   box.querySelectorAll('.slot').forEach(b => b.addEventListener('click', () => openMeetingDialog({ start: +b.dataset.start, durationMin: durMin, attendees })));
 }
 
@@ -647,7 +740,6 @@ function getDaysOff() { return [...document.querySelectorAll('#mDaysOff .day-tog
 
 // ── comboboxes (timezone search) ───────────────────────────────────────────────
 function setupComboboxes() {
-  makeCombo($('homeTz'), $('homeTzList'), tz => { homeTz = tz; localStorage.setItem('tzclock.home', tz); render(); });
   makeCombo($('mTz'), $('mTzList'), () => {});
 }
 function makeCombo(input, list, onPick) {
@@ -679,20 +771,37 @@ function bindControls() {
   $('nextDay').addEventListener('click', () => { refDate = shiftISO(refDate, +1); render(); });
   $('todayBtn').addEventListener('click', () => { refDate = todayISO(homeTz); render(); });
   $('datePick').addEventListener('change', e => { if (e.target.value) { refDate = e.target.value; render(); } });
+  $('dsPrev').addEventListener('click', () => { $('dateStrip').scrollBy({ left: -200, behavior: 'smooth' }); });
+  $('dsNext').addEventListener('click', () => { $('dateStrip').scrollBy({ left: 200, behavior: 'smooth' }); });
 
   $('zoomIn').addEventListener('click', () => setZoom(zoom + 12));
   $('zoomOut').addEventListener('click', () => setZoom(zoom - 12));
   $('fitBtn').addEventListener('click', () => { userZoomed = false; localStorage.setItem('tzclock.userZoom', '0'); fitZoom(); });
-  $('fmt12').addEventListener('change', e => { setHour12(e.target.checked); localStorage.setItem('tzclock.fmt12', e.target.checked ? '1' : '0'); render(); });
+  $('bandsBtn').addEventListener('click', () => {
+    showBands = !showBands; localStorage.setItem('tzclock.bands', showBands ? '1' : '0');
+    toggleSync('bandsBtn', showBands); renderLanes();
+  });
   $('dayNightBtn').addEventListener('click', () => {
     dayNight = !dayNight; localStorage.setItem('tzclock.daynight', dayNight ? '1' : '0');
-    $('dayNightBtn').classList.toggle('active', dayNight); renderLanes(); positionMarkers(); updateScrub();
+    $('stage').classList.toggle('daynight-active', dayNight);
+    toggleSync('dayNightBtn', dayNight); renderLanes(); positionMarkers(); updateScrub(); renderPlanner();
   });
   $('compactBtn').addEventListener('click', () => {
     compact = !compact; localStorage.setItem('tzclock.compact', compact ? '1' : '0');
     document.documentElement.classList.toggle('compact-mode', compact);
-    $('compactBtn').classList.toggle('active', compact); positionMarkers();
+    toggleSync('compactBtn', compact); positionMarkers();
   });
+  $('fmt12Btn').addEventListener('click', () => {
+    const v = !HOUR_12; setHour12(v); localStorage.setItem('tzclock.fmt12', v ? '1' : '0');
+    toggleSync('fmt12Btn', v); render();
+  });
+  // Settings panel toggle
+  const settingsBtn = $('settingsBtn');
+  const settingsPanel = $('settingsPanel');
+  if (settingsBtn && settingsPanel) {
+    settingsBtn.addEventListener('click', () => { settingsPanel.hidden = !settingsPanel.hidden; });
+    document.addEventListener('click', e => { if (!settingsPanel.hidden && !e.target.closest('.settings-wrap')) settingsPanel.hidden = true; });
+  }
   $('search').addEventListener('input', e => { search = e.target.value; renderLanes(); renderRoster(); updateScrub(); });
   $('duration').addEventListener('change', renderPlanner);
   $('blockBtn').addEventListener('click', () => {

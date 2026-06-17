@@ -26,7 +26,7 @@ function isWithin(h, start, end) {
 }
 
 // 12h vs 24h display, toggled from the UI.
-let HOUR_12 = false;
+let HOUR_12 = true;
 function setHour12(v) { HOUR_12 = !!v; }
 
 // "13:30" (or "1:30 PM") from a fractional hour.

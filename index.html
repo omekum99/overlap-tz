@@ -29,30 +29,36 @@
 
   <main class="app">
     <!-- ───────────────────────── Stage: the timeline ───────────────────────── -->
-    <section class="card stage">
-      <!-- compact controls: timezone · date · zoom · format · block -->
+    <section id="stage" class="card stage">
+      <!-- minimal controls: date nav + settings -->
       <div class="controls">
-        <div class="combo" id="homeCombo">
-          <span class="combo-icon">🌍</span>
-          <input id="homeTz" class="combo-input" placeholder="Show times in… (city or country)" autocomplete="off" aria-label="Reference timezone" />
-          <ul id="homeTzList" class="combo-list" hidden></ul>
-        </div>
-        <div class="ctrl-group date-nav">
-          <button id="prevDay" class="btn ghost icon-btn" title="Previous day">‹</button>
-          <input id="datePick" type="date" aria-label="Date" />
-          <button id="nextDay" class="btn ghost icon-btn" title="Next day">›</button>
-          <button id="todayBtn" class="btn ghost sm">Today</button>
-        </div>
-        <span id="dateLabel" class="date-pretty"></span>
+        <button id="prevDay" class="btn ghost icon-btn" title="Previous day">‹</button>
+        <input id="datePick" type="date" aria-label="Date" />
+        <button id="nextDay" class="btn ghost icon-btn" title="Next day">›</button>
+        <button id="todayBtn" class="btn ghost sm">Today</button>
         <span class="spacer"></span>
-        <div class="ctrl-group zoom">
-          <button id="zoomOut" class="btn ghost icon-btn" title="Zoom out">−</button>
-          <button id="fitBtn" class="btn ghost sm" title="Fit the whole day to the screen">Fit</button>
-          <button id="zoomIn" class="btn ghost icon-btn" title="Zoom in">+</button>
+        <div class="settings-wrap">
+          <button id="settingsBtn" class="btn ghost icon-btn" title="Settings">⚙️</button>
+          <div id="settingsPanel" class="settings-panel" hidden>
+            <div class="sp-section">
+              <span class="sp-label">View</span>
+              <div class="sp-row toggles">
+                <button id="bandsBtn" class="toggle-btn active" title="Show working-hour bands">▤ Bands</button>
+                <button id="dayNightBtn" class="toggle-btn" title="Show day/night gradient">☀🌙 Day</button>
+                <button id="compactBtn" class="toggle-btn" title="Compact rows">≡ Compact</button>
+                <button id="fmt12Btn" class="toggle-btn" title="12-hour clock">12h</button>
+              </div>
+            </div>
+            <div class="sp-section">
+              <span class="sp-label">Zoom</span>
+              <div class="sp-row">
+                <button id="zoomOut" class="btn ghost icon-btn" title="Zoom out">−</button>
+                <button id="fitBtn" class="btn ghost sm">Fit</button>
+                <button id="zoomIn" class="btn ghost icon-btn" title="Zoom in">+</button>
+              </div>
+            </div>
+          </div>
         </div>
-        <label class="switch" title="12-hour clock"><input id="fmt12" type="checkbox" /><span>AM/PM</span></label>
-        <button id="dayNightBtn" class="btn ghost sm" title="Show each person's day & night — respect their hours">☾ Day / night</button>
-        <button id="compactBtn" class="btn ghost icon-btn" title="Compact rows" aria-label="Compact rows">≡</button>
       </div>
 
       <!-- team filters double as the planner scope -->
@@ -63,7 +69,11 @@
       </div>
 
       <!-- scrollable date strip — drag/scroll to any day -->
-      <div id="dateStrip" class="date-strip" aria-label="Pick a date"></div>
+      <div class="date-strip-wrap">
+        <button id="dsPrev" class="ds-arrow" title="Earlier dates">◀</button>
+        <div id="dateStrip" class="date-strip" aria-label="Pick a date"></div>
+        <button id="dsNext" class="ds-arrow" title="Later dates">▶</button>
+      </div>
 
       <!-- scrollable, hover-readable timeline -->
       <div id="board" class="board">
@@ -83,7 +93,7 @@
       <div class="planner-strip">
         <div class="planner-head">
           <div>
-            <h2>Find a time</h2>
+            <h2>⏰ Find a time</h2>
             <p class="muted small">When <b id="plannerScopeName">everyone</b> overlaps — pick a slot to schedule.</p>
           </div>
           <select id="duration" class="mini-select" aria-label="Meeting length">
@@ -102,7 +112,7 @@
     <aside class="side">
       <section class="card roster-card">
         <div class="card-head">
-          <h2>Team</h2>
+          <h2>👥 Team</h2>
           <div class="head-actions">
             <input id="search" class="mini-search" placeholder="Search…" aria-label="Search teammates" />
             <button id="openAdd" class="btn primary sm">＋ Person</button>
@@ -114,11 +124,13 @@
       </section>
 
       <section class="card meetings-card">
-        <button id="blockBtn" class="btn primary block-cta">＋ Block time / new meeting</button>
-        <button id="toggleMeetings" class="card-head collapser" aria-expanded="true">
-          <h2>Saved meetings <span id="mtgCount" class="count"></span></h2>
-          <span class="muted small">on this device · <span class="chevron">▾</span></span>
-        </button>
+        <div class="card-head">
+          <button id="toggleMeetings" class="collapser" aria-expanded="true">
+            <h2>Saved meetings <span id="mtgCount" class="count"></span></h2>
+            <span class="muted small">on this device · <span class="chevron">▾</span></span>
+          </button>
+          <button id="blockBtn" class="btn primary sm" title="Block time or schedule a meeting">📅 Block time</button>
+        </div>
         <div id="meetings" class="meetings"></div>
       </section>
     </aside>
