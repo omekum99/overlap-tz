@@ -8,8 +8,8 @@
  *      └──────────────── encode (debounced) ◀──────────────────────┘
  *   localStorage ──▶ `meetings` (private, per-workspace) + viewer prefs
  *
- * Viewer-only settings (mode, home tz, date, zoom, 12h, search) never enter the
- * shared URL, so everyone opens the same team in their own context.
+ * Viewer-only settings (home tz, date, zoom, 12h, search, team filter) never
+ * enter the shared URL, so everyone opens the same team in their own context.
  *
  * `DateTime` comes from timeutil.js (classic scripts share one global scope).
  */
@@ -17,16 +17,18 @@
 const TEAM_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#ef4444', '#14b8a6', '#f97316'];
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];   // Mon=1 .. Sun=7
 const SAFE_URL_LEN = 1800;
-const ZOOM_MIN = 34, ZOOM_MAX = 104;
+const ZOOM_MIN = 30, ZOOM_MAX = 120;
+const DUR_OPTS = [15, 30, 45, 60, 90, 120];               // meeting-dialog lengths
 
 let state = clone(EMPTY_STATE);
 let meetings = [];
 let homeTz = restoreHomeTz();
 let refDate = todayISO(homeTz);
-let scrubHour = nowAxisHour(homeTz);
-let plannerScope = '';               // '' = everyone, else team id
+let scrubHour = nowAxisHour(homeTz);    // pinned scrubber position (home-tz hours)
+let activeTeams = new Set();            // team ids shown on the board; empty = everyone
 let search = '';
-let zoom = +(localStorage.getItem('tzclock.zoom') || 56);
+let userZoomed = localStorage.getItem('tzclock.userZoom') === '1';
+let zoom = +(localStorage.getItem('tzclock.zoom') || 48);
 let editingIndex = -1;
 
 const $ = id => document.getElementById(id);
@@ -35,6 +37,8 @@ function restoreHomeTz() {
   return isValidZone(tz) ? tz : 'UTC';
 }
 function cssNum(name) { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0; }
+const LW = () => cssNum('--label-w');
+const HW = () => cssNum('--hour-w');
 
 // ── boot ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -43,7 +47,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!state.wid) state.wid = shortId();
   meetings = loadMeetings(state.wid);
 
-  setMode(localStorage.getItem('tzclock.mode') || 'zen');
   document.documentElement.style.setProperty('--hour-w', zoom + 'px');
   const f12 = localStorage.getItem('tzclock.fmt12') === '1';
   setHour12(f12); $('fmt12').checked = f12;
@@ -51,10 +54,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initDaysOff();
   bindControls();
-  bindScrubber();
+  bindBoard();
   bindMeetingDialog();
   setupComboboxes();
-  $('boardInner').title = 'Double-click to block / schedule time';
 
   window.addEventListener('hashchange', () => {
     state = decodeState(readHash());
@@ -62,9 +64,11 @@ document.addEventListener('DOMContentLoaded', () => {
     meetings = loadMeetings(state.wid);
     render();
   });
-  window.addEventListener('resize', positionMarkers);
+  window.addEventListener('resize', () => { if (!userZoomed) fitZoom(); positionMarkers(); });
   setInterval(positionMarkers, 30000);
+
   render();
+  if (!userZoomed) fitZoom();           // by default, the whole day fits the screen
 });
 
 function save() {
@@ -82,7 +86,8 @@ function render() {
   $('homeTz').value = labelForTz(homeTz);
   $('datePick').value = refDate;
   $('dateLabel').textContent = prettyDate(refDate) + (isTodayISO(refDate, homeTz) ? ' · today' : '');
-  renderPlannerScope();
+  pruneActiveTeams();
+  renderTeamFilter();
   renderTeamSelect();
   renderTeamList();
   renderAxis();
@@ -95,14 +100,42 @@ function render() {
   save();
 }
 
-function memberEntries() {
+// Members visible on the board / counted by the planner (team filter + search).
+function visibleEntries() {
   const q = search.trim().toLowerCase();
-  return state.members.map((m, gi) => ({ m, gi })).filter(e => !q || e.m.name.toLowerCase().includes(q));
+  return state.members
+    .map((m, gi) => ({ m, gi }))
+    .filter(e => (activeTeams.size === 0 || activeTeams.has(e.m.teamId)) && (!q || e.m.name.toLowerCase().includes(q)));
+}
+function scopeMembers() {
+  return state.members.filter(m => activeTeams.size === 0 || activeTeams.has(m.teamId));
 }
 function teamById(id) { return state.teams.find(t => t.id === id); }
 function colorOf(member) {
   const t = teamById(member.teamId);
   return t ? TEAM_COLORS[t.color % TEAM_COLORS.length] : '#94a3b8';
+}
+function pruneActiveTeams() {
+  for (const id of [...activeTeams]) if (!teamById(id)) activeTeams.delete(id);
+}
+
+// ── team filter (multi-select; also the planner scope) ─────────────────────────
+function renderTeamFilter() {
+  const box = $('teamFilter');
+  const chip = (id, label, on, dot) =>
+    `<button class="tf-chip ${on ? 'active' : ''}" data-team="${id}">${dot}${esc(label)}</button>`;
+  const chips = [chip('__all', 'Everyone', activeTeams.size === 0, '')];
+  for (const t of state.teams) {
+    const dot = `<span class="dot" style="background:${TEAM_COLORS[t.color % TEAM_COLORS.length]}"></span>`;
+    chips.push(chip(t.id, t.name, activeTeams.has(t.id), dot));
+  }
+  box.innerHTML = chips.join('');
+  box.querySelectorAll('.tf-chip').forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.team;
+    if (id === '__all') activeTeams.clear();
+    else { activeTeams.has(id) ? activeTeams.delete(id) : activeTeams.add(id); }
+    render();
+  }));
 }
 
 // ── timeline ───────────────────────────────────────────────────────────────
@@ -111,8 +144,8 @@ function renderAxis() {
   track.innerHTML = '';
   for (let h = 0; h < 24; h++) {
     const cell = document.createElement('div');
-    cell.className = 'tick';
-    cell.innerHTML = `<span>${String(h).padStart(2, '0')}</span>`;
+    cell.className = 'tick' + (h === 0 ? ' daybreak' : '');
+    cell.innerHTML = `<span>${HOUR_12 ? hourLabel(h) : String(h).padStart(2, '0')}</span>`;
     track.appendChild(cell);
   }
 }
@@ -120,9 +153,10 @@ function renderAxis() {
 function renderLanes() {
   const wrap = $('lanes');
   wrap.innerHTML = '';
-  const entries = memberEntries();
+  const entries = visibleEntries();
   if (entries.length === 0) {
-    wrap.innerHTML = `<div class="tl-row"><div class="empty" style="grid-column:1/-1">No teammates yet — add one from the Team panel.</div></div>`;
+    const why = state.members.length ? 'No teammates match this filter.' : 'No teammates yet — add one from the Team panel.';
+    wrap.innerHTML = `<div class="tl-row"><div class="empty" style="grid-column:1/-1">${why}</div></div>`;
     return;
   }
   for (const { m, gi } of entries) {
@@ -146,48 +180,81 @@ function renderLanes() {
   }
 }
 
-function bindScrubber() {
-  const inner = $('boardInner');
-  let dragging = false;
-  const setFromX = clientX => {
-    const rect = inner.getBoundingClientRect();
-    const x = clientX - rect.left - cssNum('--label-w');
-    scrubHour = Math.min(24, Math.max(0, x / cssNum('--hour-w')));
-    updateScrub();
-  };
-  inner.addEventListener('pointerdown', e => {
-    if (e.target.closest('.tl-label')) return;
-    const rect = inner.getBoundingClientRect();
-    if (e.clientX - rect.left < cssNum('--label-w')) return;
-    dragging = true; inner.setPointerCapture(e.pointerId); setFromX(e.clientX);
-  });
-  inner.addEventListener('pointermove', e => { if (dragging) setFromX(e.clientX); });
-  inner.addEventListener('pointerup', () => { dragging = false; });
+function xForHour(h) { return LW() + h * HW(); }
 
-  // Double-click the calendar to block / schedule time at that moment.
-  inner.addEventListener('dblclick', e => {
-    if (e.target.closest('.tl-label')) return;
-    const rect = inner.getBoundingClientRect();
-    const x = e.clientX - rect.left - cssNum('--label-w');
-    if (x < 0) return;
-    let h = Math.min(23.5, Math.max(0, x / cssNum('--hour-w')));
-    h = Math.round(h * 2) / 2;                 // snap to 30 min
-    const scope = currentScopeWorking();
-    openMeetingDialog(h, +$('duration').value, scope.map(m => m.name), 'Blocked');
-  });
-  $('scrubber').addEventListener('keydown', e => {
-    if (e.key === 'ArrowRight') { scrubHour = mod24(scrubHour + 0.25); updateScrub(); }
-    if (e.key === 'ArrowLeft')  { scrubHour = mod24(scrubHour - 0.25); updateScrub(); }
-  });
+// Pointer x (client coords) → axis hour, or null if over the sticky name column.
+function hourFromClientX(clientX) {
+  const r = $('boardInner').getBoundingClientRect();
+  const x = clientX - r.left - LW();
+  if (x < 0) return null;
+  return Math.min(24, Math.max(0, x / HW()));
 }
 
-function xForHour(h) { return cssNum('--label-w') + h * cssNum('--hour-w'); }
+// Hover to read every zone's time; click to pin; double-click to block; wheel
+// past either edge spills into the next/previous day (the "infinite" scroll).
+function bindBoard() {
+  const inner = $('boardInner');
+  const board = $('board');
+  let downX = null;
+
+  inner.addEventListener('pointermove', e => {
+    if (e.target.closest('.tl-label')) return;
+    const h = hourFromClientX(e.clientX);
+    if (h == null) return;
+    placeScrub(h); updateScrub(h); showTip(h);
+  });
+  inner.addEventListener('pointerleave', () => { placeScrub(scrubHour); updateScrub(scrubHour); hideTip(); });
+  inner.addEventListener('pointerdown', e => { if (!e.target.closest('.tl-label')) downX = e.clientX; });
+  inner.addEventListener('pointerup', e => {
+    if (e.target.closest('.tl-label')) return;
+    const h = hourFromClientX(e.clientX);
+    if (h != null) { scrubHour = h; placeScrub(h); updateScrub(h); }
+    downX = null;
+  });
+
+  inner.addEventListener('dblclick', e => {
+    if (e.target.closest('.tl-label')) return;
+    const h = hourFromClientX(e.clientX);
+    if (h == null) return;
+    const scope = currentScopeWorking();
+    openMeetingDialog({ start: Math.round(h * 2) / 2, attendees: scope.map(m => m.name) });
+  });
+
+  $('scrubber').addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') { scrubHour = mod24(scrubHour + 0.25); placeScrub(scrubHour); updateScrub(scrubHour); }
+    if (e.key === 'ArrowLeft') { scrubHour = mod24(scrubHour - 0.25); placeScrub(scrubHour); updateScrub(scrubHour); }
+  });
+
+  // Edge spill-over: keep scrolling past the end of the day to roll into the next.
+  let spill = 0;
+  board.addEventListener('wheel', e => {
+    const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : 0;
+    if (!dx) return;
+    const atRight = board.scrollLeft + board.clientWidth >= board.scrollWidth - 2;
+    const atLeft = board.scrollLeft <= 1;
+    if (dx > 0 && atRight) { spill += dx; if (spill > 140) { spill = 0; rollDay(+1); } e.preventDefault(); }
+    else if (dx < 0 && atLeft) { spill += dx; if (spill < -140) { spill = 0; rollDay(-1); } e.preventDefault(); }
+    else spill = 0;
+  }, { passive: false });
+}
+
+function rollDay(dir) {
+  refDate = shiftISO(refDate, dir);
+  render();
+  // land at the matching edge so the motion feels continuous
+  const board = $('board');
+  board.scrollLeft = dir > 0 ? 0 : board.scrollWidth;
+}
+
+function placeScrub(h) { $('scrubber').style.left = xForHour(h) + 'px'; }
+function showTip(h) { const t = $('hoverTip'); t.hidden = false; t.textContent = hourLabel(h); t.style.left = xForHour(h) + 'px'; }
+function hideTip() { $('hoverTip').hidden = true; }
 
 function positionMarkers() {
   const now = $('nowMarker');
   if (isTodayISO(refDate, homeTz)) { now.style.display = ''; now.style.left = xForHour(nowAxisHour(homeTz)) + 'px'; }
   else now.style.display = 'none';
-  $('scrubber').style.left = xForHour(scrubHour) + 'px';
+  placeScrub(scrubHour);
   renderBlocks();
 }
 
@@ -195,7 +262,7 @@ function positionMarkers() {
 function renderBlocks() {
   const inner = $('boardInner');
   inner.querySelectorAll('.block-span').forEach(e => e.remove());
-  const hw = cssNum('--hour-w'), lw = cssNum('--label-w');
+  const hw = HW(), lw = LW();
   for (const m of meetings) {
     const dt = DateTime.fromISO(m.startUTC).setZone(homeTz);
     if (dt.toISODate() !== refDate) continue;
@@ -209,13 +276,12 @@ function renderBlocks() {
   }
 }
 
-function updateScrub() {
-  $('scrubber').style.left = xForHour(scrubHour) + 'px';
-  $('scrubReadout').textContent = `${hourLabel(scrubHour)} ${labelForTz(homeTz)}`;
-  for (const { m, gi } of memberEntries()) {
+function updateScrub(h = scrubHour) {
+  $('scrubReadout').textContent = `${hourLabel(h)} · ${labelForTz(homeTz)}`;
+  for (const { m, gi } of visibleEntries()) {
     const el = $('live-' + gi);
     if (!el) continue;
-    const { label, working } = localAt(scrubHour, m, refDate, homeTz);
+    const { label, working } = localAt(h, m, refDate, homeTz);
     el.textContent = label;
     el.classList.toggle('working', working);
   }
@@ -242,7 +308,6 @@ function renderRoster() {
     box.appendChild(grp);
   }
 
-  // drag wiring
   box.querySelectorAll('.person').forEach(chip => {
     chip.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', chip.dataset.gi); chip.classList.add('dragging'); });
     chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
@@ -267,14 +332,8 @@ function personChip(m, gi) {
 }
 
 // ── planner ──────────────────────────────────────────────────────────────────
-function renderPlannerScope() {
-  const sel = $('plannerScope');
-  sel.innerHTML = '<option value="">Everyone</option>' + state.teams.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
-  sel.value = plannerScope;
-}
-
 function currentScopeWorking() {
-  return state.members.filter(m => (!plannerScope || m.teamId === plannerScope) && !isMemberOff(m, refDate));
+  return scopeMembers().filter(m => !isMemberOff(m, refDate));
 }
 // 15-min occupancy of saved meetings on the selected date (in home tz).
 function busyCellsForDate() {
@@ -297,11 +356,17 @@ function slotIsBusy(startH, durH, cells) {
 }
 function refreshPlanner() { renderPlanner(); positionMarkers(); }
 
+function scopeLabel() {
+  if (activeTeams.size === 0) return 'everyone';
+  if (activeTeams.size === 1) return teamById([...activeTeams][0])?.name || 'team';
+  return 'the selected teams';
+}
+
 function renderPlanner() {
-  const scope = state.members.filter(m => !plannerScope || m.teamId === plannerScope);
+  const scope = scopeMembers();
   const working = scope.filter(m => !isMemberOff(m, refDate));
   const offToday = scope.filter(m => isMemberOff(m, refDate));
-  $('plannerScopeName').textContent = plannerScope ? (teamById(plannerScope)?.name || 'team') : 'everyone';
+  $('plannerScopeName').textContent = scopeLabel();
 
   const box = $('planner');
   const offNote = offToday.length
@@ -327,20 +392,20 @@ function renderPlanner() {
   }).join('');
 
   const blockNote = blockedCount
-    ? `<p class="muted small">⛌ ${blockedCount} block${blockedCount > 1 ? 's' : ''} on this day reduce${blockedCount > 1 ? '' : 's'} availability.</p>` : '';
+    ? `<p class="muted small block-note">⛌ ${blockedCount} block${blockedCount > 1 ? 's' : ''} on this day reduce${blockedCount > 1 ? '' : 's'} availability.</p>` : '';
   const slotBtns = slots.length
     ? `<div class="slots"><span class="muted small">${durMin}-min slots:</span>${slots.map(s => `<button class="slot" data-start="${s.start}">${hourLabel(s.start)}</button>`).join('')}</div>`
     : `<p class="muted small">No free ${durMin}-min slot${blockedCount ? ' (time is blocked)' : ''} — try shorter or another date.</p>`;
 
   box.innerHTML = offNote + blockNote + top + slotBtns;
-  box.querySelectorAll('.slot').forEach(b => b.addEventListener('click', () => openMeetingDialog(+b.dataset.start, durMin, attendees)));
+  box.querySelectorAll('.slot').forEach(b => b.addEventListener('click', () => openMeetingDialog({ start: +b.dataset.start, durationMin: durMin, attendees })));
 }
 
 // ── saved meetings ─────────────────────────────────────────────────────────────
 function renderMeetings() {
   $('mtgCount').textContent = meetings.length ? `(${meetings.length})` : '';
   const box = $('meetings');
-  if (meetings.length === 0) { box.innerHTML = '<p class="muted small">No saved meetings yet. Pick a slot above to create one.</p>'; return; }
+  if (meetings.length === 0) { box.innerHTML = '<p class="muted small">No saved meetings yet. Use ＋ Block time, double-click the timeline, or pick a slot.</p>'; return; }
   const sorted = [...meetings].sort((a, b) => a.startUTC < b.startUTC ? -1 : 1);
   box.innerHTML = sorted.map(m => {
     const dt = DateTime.fromISO(m.startUTC).setZone(homeTz);
@@ -366,41 +431,63 @@ function renderMeetings() {
   box.querySelectorAll('[data-mdel]').forEach(b => b.addEventListener('click', () => { meetings = meetings.filter(x => x.id !== b.dataset.mdel); persistMeetings(); renderMeetings(); refreshPlanner(); }));
 }
 
-// ── meeting dialog ─────────────────────────────────────────────────────────────
-let pendingMeeting = null, editingMeetingId = null;
+// ── meeting dialog (date / time / length editable inline) ──────────────────────
+let editingMeetingId = null;
 function bindMeetingDialog() {
+  $('mtgDur').innerHTML = DUR_OPTS.map(d => `<option value="${d}">${durLabel(d)}</option>`).join('');
+  ['mtgDate', 'mtgStart', 'mtgDur'].forEach(id => $(id).addEventListener('input', updateMeetingWhen));
+
   const dlg = $('meetingDialog');
   dlg.addEventListener('close', () => {
-    if (dlg.returnValue !== 'save' || !pendingMeeting) { pendingMeeting = editingMeetingId = null; return; }
+    if (dlg.returnValue !== 'save') { editingMeetingId = null; return; }
+    const date = $('mtgDate').value || refDate;
+    const sh = parseTime($('mtgStart').value || '09:00');
+    const durationMin = +$('mtgDur').value;
     const data = {
-      title: $('meetingTitle').value.trim() || 'Meeting',
+      title: $('meetingTitle').value.trim() || 'Blocked',
       attendees: $('meetingAttendees').value.split(',').map(s => s.trim()).filter(Boolean),
       notes: $('meetingNotes').value.trim(),
-      startUTC: pendingMeeting.startUTC, durationMin: pendingMeeting.durationMin,
+      startUTC: axisInstant(sh, date, homeTz).toUTC().toISO(),
+      durationMin,
     };
     if (editingMeetingId) Object.assign(meetings.find(x => x.id === editingMeetingId), data);
     else meetings.push(makeMeeting(data));
-    pendingMeeting = editingMeetingId = null;
+    editingMeetingId = null;
     persistMeetings(); renderMeetings(); refreshPlanner(); toast('💾 Saved on this device.');
   });
 }
-function openMeetingDialog(slotStart, durationMin, attendees, title = '') {
-  pendingMeeting = { startUTC: axisInstant(slotStart, refDate, homeTz).toUTC().toISO(), durationMin, attendees };
+function updateMeetingWhen() {
+  const date = $('mtgDate').value, t = $('mtgStart').value;
+  if (!date || !t) { $('meetingWhen').textContent = ''; return; }
+  const sh = parseTime(t), dur = +$('mtgDur').value;
+  $('meetingWhen').textContent = `${prettyDate(date)} · ${hourLabel(sh)}–${hourLabel(sh + dur / 60)} (${labelForTz(homeTz)})`;
+}
+function openMeetingDialog({ date = refDate, start = scrubHour, durationMin = 60, attendees = [], title = '' } = {}) {
   editingMeetingId = null;
-  $('meetingDialogTitle').textContent = title ? 'Block / schedule time' : 'New meeting';
-  $('meetingWhen').textContent = `${prettyDate(refDate)} · ${hourLabel(slotStart)}–${hourLabel(slotStart + durationMin / 60)} (${labelForTz(homeTz)})`;
-  $('meetingTitle').value = title; $('meetingAttendees').value = attendees.join(', '); $('meetingNotes').value = '';
+  $('meetingDialogTitle').textContent = 'Block / schedule time';
+  $('mtgDate').value = date;
+  $('mtgStart').value = toTimeInput(Math.round(start * 4) / 4);   // snap to 15 min
+  $('mtgDur').value = String(nearestDur(durationMin));
+  $('meetingTitle').value = title;
+  $('meetingAttendees').value = attendees.join(', ');
+  $('meetingNotes').value = '';
+  updateMeetingWhen();
   $('meetingDialog').showModal();
 }
 function editMeeting(id) {
   const m = meetings.find(x => x.id === id); if (!m) return;
-  pendingMeeting = { startUTC: m.startUTC, durationMin: m.durationMin }; editingMeetingId = id;
-  const dt = DateTime.fromISO(m.startUTC).setZone(homeTz); const sh = dt.hour + dt.minute / 60;
+  editingMeetingId = id;
+  const dt = DateTime.fromISO(m.startUTC).setZone(homeTz);
   $('meetingDialogTitle').textContent = 'Edit meeting';
-  $('meetingWhen').textContent = `${dt.toFormat('ccc dd LLL')} · ${hourLabel(sh)}–${hourLabel(sh + m.durationMin / 60)}`;
+  $('mtgDate').value = dt.toISODate();
+  $('mtgStart').value = toTimeInput(dt.hour + dt.minute / 60);
+  $('mtgDur').value = String(nearestDur(m.durationMin));
   $('meetingTitle').value = m.title; $('meetingAttendees').value = m.attendees.join(', '); $('meetingNotes').value = m.notes;
+  updateMeetingWhen();
   $('meetingDialog').showModal();
 }
+function durLabel(d) { return d % 60 === 0 ? (d / 60 === 1 ? '1 hour' : (d / 60) + ' hours') : d + ' min'; }
+function nearestDur(d) { return DUR_OPTS.reduce((a, b) => Math.abs(b - d) < Math.abs(a - d) ? b : a, DUR_OPTS[0]); }
 
 // ── days-off toggles ───────────────────────────────────────────────────────────
 function initDaysOff() {
@@ -442,17 +529,21 @@ function makeCombo(input, list, onPick) {
 function bindControls() {
   $('org').addEventListener('input', e => { state.org = e.target.value; save(); });
 
-  document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
   $('prevDay').addEventListener('click', () => { refDate = shiftISO(refDate, -1); render(); });
   $('nextDay').addEventListener('click', () => { refDate = shiftISO(refDate, +1); render(); });
   $('todayBtn').addEventListener('click', () => { refDate = todayISO(homeTz); render(); });
   $('datePick').addEventListener('change', e => { if (e.target.value) { refDate = e.target.value; render(); } });
+
   $('zoomIn').addEventListener('click', () => setZoom(zoom + 12));
   $('zoomOut').addEventListener('click', () => setZoom(zoom - 12));
+  $('fitBtn').addEventListener('click', () => { userZoomed = false; localStorage.setItem('tzclock.userZoom', '0'); fitZoom(); });
   $('fmt12').addEventListener('change', e => { setHour12(e.target.checked); localStorage.setItem('tzclock.fmt12', e.target.checked ? '1' : '0'); render(); });
   $('search').addEventListener('input', e => { search = e.target.value; renderLanes(); renderRoster(); updateScrub(); });
-  $('plannerScope').addEventListener('change', e => { plannerScope = e.target.value; renderPlanner(); });
   $('duration').addEventListener('change', renderPlanner);
+  $('blockBtn').addEventListener('click', () => {
+    const scope = currentScopeWorking();
+    openMeetingDialog({ start: Math.round(scrubHour * 2) / 2, attendees: scope.map(m => m.name) });
+  });
 
   $('openAdd').addEventListener('click', () => { resetForm(); openDrawer(); $('mName').focus(); });
   $('openTeams').addEventListener('click', () => { openDrawer(); $('teamName').focus(); });
@@ -479,16 +570,21 @@ function bindControls() {
   $('shareBtn').addEventListener('click', share);
 }
 
-function setMode(m) {
-  document.documentElement.dataset.mode = m;
-  localStorage.setItem('tzclock.mode', m);
-  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+// Fit the whole 24h day inside the board (the default — no horizontal scroll).
+function fitZoom() {
+  const board = $('board');
+  const avail = board.clientWidth - LW() - 2;
+  if (avail <= 0) return;
+  zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.floor(avail / 24)));
+  document.documentElement.style.setProperty('--hour-w', zoom + 'px');
   positionMarkers();
 }
 function setZoom(z) {
+  userZoomed = true;
   zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
   document.documentElement.style.setProperty('--hour-w', zoom + 'px');
   localStorage.setItem('tzclock.zoom', zoom);
+  localStorage.setItem('tzclock.userZoom', '1');
   positionMarkers();
 }
 function openDrawer() { $('scrim').hidden = false; $('drawer').hidden = false; }
@@ -512,7 +608,7 @@ function renderTeamList() {
     const id = b.dataset.delteam;
     state.teams = state.teams.filter(t => t.id !== id);
     state.members.forEach(m => { if (m.teamId === id) m.teamId = ''; });
-    if (plannerScope === id) plannerScope = '';
+    activeTeams.delete(id);
     render();
   }));
 }

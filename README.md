@@ -30,6 +30,15 @@ python3 -m http.server 8000   # then visit http://localhost:8000
 
 - **24h timeline in *your* timezone** — defaults to your browser's zone (remembered), or
   pick any zone. A live "now" marker shows the current time.
+- **Fits your screen** — the whole day is sized to the viewport by default (no page scroll);
+  **−/+** zoom in for detail and the board scrolls, **Fit** snaps back. Scroll past the edge
+  of the day to roll into the next/previous one.
+- **Hover to read every zone** — move the cursor across the timeline and each teammate's
+  local time updates live (green = inside their working hours); click to pin, arrow-keys nudge.
+- **Team filters** — chips above the timeline show/hide sub-teams; they also set the planner
+  scope (multi-select, or "Everyone").
+- **＋ Block time** — one button (or a double-click on the timeline) opens a dialog where the
+  date, start, and length are all editable inline — no scrolling to the right day first.
 - **Date navigation** — ◀ / ▶ / date-picker / Today. Offsets are computed *per date*, so
   overlaps reflect daylight-saving differences (the same meeting overlaps differently in
   January vs July).
@@ -58,11 +67,13 @@ python3 -m http.server 8000   # then visit http://localhost:8000
 
 ## Design & interaction
 
-- **Four themes ("modes")** — Zen (light, minimal), Midnight (refined dark), Aurora (vivid
-  dark), Daylight (dense/compact). Switch from the top bar; choice is remembered. Fonts:
+- **One calm design system ("Zen")** — light, warm-paper background, a single sage accent,
+  sharp (un-rounded) corners. No theme switching: one focused, production interface. Fonts:
   Bricolage Grotesque (display), Manrope (body), JetBrains Mono (times).
-- **Scrollable, zoomable timeline** — the 24h board scrolls horizontally with sticky name
-  column; − / + zoom the hour width.
+- **App-shell layout** — a fixed top bar, the timeline as the stage, and a side rail for the
+  team + saved meetings. Each pane scrolls on its own so the page itself doesn't.
+- **Scrollable, zoomable timeline** — the 24h board fits the screen by default, zooms with
+  − / +, and scrolls horizontally (sticky name column) when zoomed in.
 - **Search by city or country** — type "Boston", "India", "London" to find the right zone
   (no need to know IANA names like `America/New_York`).
 - **Drag & drop** — drag a person chip onto a team to reassign them.
@@ -74,13 +85,13 @@ python3 -m http.server 8000   # then visit http://localhost:8000
 | File          | Job                                                                |
 |---------------|--------------------------------------------------------------------|
 | `index.html`  | Markup + loads the libraries and scripts                           |
-| `styles.css`  | All styling + the four theme modes (plain CSS variables)           |
+| `styles.css`  | All styling — the single "Zen" design system + app-shell layout    |
 | `state.js`    | URL ↔ config: key-minify, lz-string compress/decompress, validate  |
 | `tzcities.js` | Friendly timezone search (city/country/alias → IANA)               |
 | `timeutil.js` | Timezone math: date/home-tz projection, scrubber, overlap, slots   |
 | `store.js`    | Private per-workspace meetings in localStorage                     |
 | `calendar.js` | .ics file + Google Calendar link generation                        |
-| `app.js`      | UI: modes, timeline, scrubber, combobox, drag & drop, drawer, planner, meetings |
+| `app.js`      | UI: timeline, hover/scrubber, team filters, combobox, drag & drop, drawer, planner, meetings |
 
 ## Deploy to GitHub Pages
 
