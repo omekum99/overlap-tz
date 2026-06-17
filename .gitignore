@@ -2,3 +2,5 @@
 *.log
 .playwright-mcp/
 smoke-*.png
+.superpowers/
+docs/superpowers/
