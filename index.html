@@ -40,6 +40,13 @@
           <button id="todayBtn" class="btn btn-ghost">Today</button>
           <span id="dateLabel" class="date-label"></span>
         </div>
+        <div class="ctrl">
+          <label for="search">Find</label>
+          <input id="search" class="search" placeholder="Search teammates…" />
+        </div>
+        <label class="ctrl checkbox fmt">
+          <input id="fmt12" type="checkbox" /> 12-hour
+        </label>
       </div>
 
       <p class="hint">Drag the <b>scrubber</b> across the board to read everyone's local time at that instant. Green = inside working hours.</p>
@@ -67,16 +74,20 @@
             <datalist id="zones"></datalist>
           </label>
           <div class="row-2">
-            <label>Start hour
-              <input id="mStart" type="number" min="0" max="23" value="9" required />
+            <label>Starts
+              <input id="mStart" type="time" step="1800" value="09:00" required />
             </label>
-            <label>End hour
-              <input id="mEnd" type="number" min="0" max="23" value="17" required />
+            <label>Ends
+              <input id="mEnd" type="time" step="1800" value="17:00" required />
             </label>
           </div>
           <label class="checkbox">
             <input id="mOvernight" type="checkbox" /> Overnight shift (end is next day)
           </label>
+          <div class="days-off">
+            <span class="days-off-label">Days off</span>
+            <div id="mDaysOff" class="day-toggles"></div>
+          </div>
           <label>Team
             <select id="mTeam"><option value="">— No team —</option></select>
           </label>
@@ -99,10 +110,29 @@
         <ul id="teamList" class="team-list"></ul>
 
         <div class="panel-head" style="margin-top:1.25rem"><h2>Meeting planner</h2></div>
-        <p class="hint">Best windows where <b id="plannerScopeName">everyone</b> is working at the same time.</p>
+        <p class="hint">Best windows where <b id="plannerScopeName">everyone</b> is working at the same time. Pick a slot to create a meeting.</p>
+        <div class="planner-controls">
+          <label>Meeting length
+            <select id="duration">
+              <option value="30">30 min</option>
+              <option value="60" selected>1 hour</option>
+              <option value="90">1.5 hours</option>
+              <option value="120">2 hours</option>
+            </select>
+          </label>
+        </div>
         <div id="planner" class="planner"></div>
       </section>
     </div>
+
+    <!-- ───────────── Saved meetings (localStorage, private to this device) ── -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Saved meetings</h2>
+        <span class="muted">on this device</span>
+      </div>
+      <div id="meetings" class="meetings"></div>
+    </section>
   </main>
 
   <footer class="footer">
@@ -111,11 +141,34 @@
 
   <div id="toast" class="toast" hidden></div>
 
+  <!-- Create / edit a meeting from a chosen slot -->
+  <dialog id="meetingDialog" class="dialog">
+    <form method="dialog" id="meetingForm">
+      <h3 id="meetingDialogTitle">New meeting</h3>
+      <p id="meetingWhen" class="muted"></p>
+      <label>Title
+        <input id="meetingTitle" maxlength="80" placeholder="e.g. Weekly sync" />
+      </label>
+      <label>Attendees
+        <input id="meetingAttendees" placeholder="Comma-separated names" />
+      </label>
+      <label>Minutes / notes (MOM)
+        <textarea id="meetingNotes" rows="5" placeholder="Agenda, decisions, action items…"></textarea>
+      </label>
+      <div class="form-actions">
+        <button value="save" class="btn btn-primary">Save meeting</button>
+        <button value="cancel" class="btn" formnovalidate>Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Dependencies (CDN, no build step). Order matters: libs first, then our code. -->
   <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
   <script src="state.js"></script>
   <script src="timeutil.js"></script>
+  <script src="store.js"></script>
+  <script src="calendar.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

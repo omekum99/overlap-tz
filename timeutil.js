@@ -16,6 +16,7 @@
 const { DateTime } = luxon;
 
 function mod24(h) { return ((h % 24) + 24) % 24; }
+function pad2(n) { return String(n).padStart(2, '0'); }
 
 // Is local hour `h` inside the working band [start, end)? Handles overnight.
 function isWithin(h, start, end) {
@@ -24,12 +25,21 @@ function isWithin(h, start, end) {
   return h >= start || h < end;            // wraps past midnight
 }
 
-// "13:30" from a fractional hour.
+// 12h vs 24h display, toggled from the UI.
+let HOUR_12 = false;
+function setHour12(v) { HOUR_12 = !!v; }
+
+// "13:30" (or "1:30 PM") from a fractional hour.
 function hourLabel(h) {
   h = mod24(h);
   const hh = Math.floor(h);
   const mm = Math.round((h - hh) * 60) % 60;
-  return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+  if (HOUR_12) {
+    const ap = hh < 12 ? 'AM' : 'PM';
+    const h12 = (hh % 12) || 12;
+    return h12 + ':' + pad2(mm) + ' ' + ap;
+  }
+  return pad2(hh) + ':' + pad2(mm);
 }
 
 // ── date / zone helpers ──────────────────────────────────────────────────────
@@ -80,7 +90,31 @@ function localAt(axisHour, member, isoDate, homeTz) {
 
 function memberWorkingAt(axisHour, member, isoDate, homeTz) {
   const inst = axisInstant(axisHour, isoDate, homeTz).setZone(member.tz);
+  const weekend = member.weekend || [6, 7];
+  if (weekend.includes(inst.weekday)) return false;       // their day off
   return isWithin(inst.hour + inst.minute / 60, member.start, member.end);
+}
+
+// Is `isoDate` a non-working day in the member's own local calendar?
+function isMemberOff(member, isoDate) {
+  const wd = DateTime.fromISO(isoDate, { zone: member.tz }).weekday;  // Mon=1..Sun=7
+  return (member.weekend || [6, 7]).includes(wd);
+}
+
+// Turn overlap windows into concrete clickable start times (every 30 min) that
+// fit a meeting of `durHours`. Wrapping windows handled via their length.
+function generateSlots(windows, durHours, maxSlots = 12) {
+  if (durHours <= 0) return [];
+  const out = [];
+  for (const w of windows) {
+    if (w.hours + 1e-9 < durHours) continue;
+    const steps = Math.floor((w.hours - durHours) / 0.5 + 1e-9);
+    for (let i = 0; i <= steps && out.length < maxSlots; i++) {
+      const start = mod24(w.start + i * 0.5);
+      out.push({ start, end: mod24(start + durHours) });
+    }
+  }
+  return out;
 }
 
 /*

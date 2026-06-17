@@ -66,7 +66,9 @@ main { max-width: 1180px; margin: 1.25rem auto; padding: 0 1.25rem; display: fle
 .date-nav { flex-direction: row; align-items: center; gap: .4rem; }
 .icon-btn { padding: .45rem .6rem; line-height: 1; }
 .date-label { font-size: .8rem; color: var(--muted); margin-left: .25rem; }
-input[type="date"] { color-scheme: dark; }
+input[type="date"], input[type="time"] { color-scheme: dark; }
+.search { min-width: 180px; }
+.ctrl.fmt { flex-direction: row; align-items: center; gap: .4rem; color: var(--text); font-size: .82rem; }
 
 /* ── board ── */
 .board { position: relative; user-select: none; }
@@ -96,6 +98,10 @@ input[type="date"] { color-scheme: dark; }
 
 .empty { grid-column: 1 / -1; color: var(--muted); padding: 1.5rem; text-align: center; border: 1px dashed var(--line); border-radius: 10px; }
 
+.lane.off .band { opacity: .3; }
+.lane.off .track { background-image: repeating-linear-gradient(45deg, transparent 0 6px, rgba(255,255,255,.03) 6px 12px); }
+.tag-off { font-size: .6rem; background: var(--line); color: var(--muted); padding: 0 5px; border-radius: 4px; margin-left: 4px; vertical-align: middle; }
+
 /* markers spanning the whole board */
 .marker { position: absolute; top: 0; bottom: 0; width: 2px; pointer-events: none; }
 .marker.now { background: rgba(245,158,11,.6); }
@@ -121,6 +127,14 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .error { color: var(--danger); font-size: .82rem; margin: 0; }
 .form-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .2rem; }
 
+/* days-off toggles */
+.days-off { display: flex; flex-direction: column; gap: .3rem; }
+.days-off-label { font-size: .82rem; color: var(--muted); }
+.day-toggles { display: flex; gap: .3rem; }
+.day-toggle { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--line);
+  background: var(--panel-2); color: var(--muted); cursor: pointer; font-size: .78rem; }
+.day-toggle.on { background: var(--danger); border-color: var(--danger); color: #fff; }
+
 .btn { background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
   padding: .55rem .9rem; border-radius: 9px; cursor: pointer; font-size: .85rem; font-weight: 500; }
 .btn:hover { border-color: var(--accent); }
@@ -138,7 +152,14 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .team-list .tname { font-weight: 600; flex: 1; }
 
 /* ── planner ── */
+.planner-controls { margin-bottom: .6rem; }
+.planner-controls label { font-size: .82rem; color: var(--muted); display: flex; gap: .5rem; align-items: center; }
 .planner { display: flex; flex-direction: column; gap: .7rem; }
+.off-note { margin: 0 0 .2rem; }
+.slots { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; padding-top: .3rem; }
+.slot { background: var(--panel-2); border: 1px solid var(--accent); color: #dbeafe; border-radius: 7px;
+  padding: .35rem .6rem; cursor: pointer; font: 600 .8rem ui-monospace, Menlo, monospace; }
+.slot:hover { background: var(--accent); color: #fff; }
 .window { border: 1px solid var(--line); border-radius: 10px; padding: .6rem .75rem; background: var(--panel-2); }
 .window.best { border-color: var(--good); box-shadow: 0 0 0 1px rgba(16,185,129,.25); }
 .window-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .4rem; }
@@ -146,6 +167,26 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .window-tbl { width: 100%; border-collapse: collapse; font-size: .82rem; }
 .window-tbl td { padding: 2px 4px; border-top: 1px solid var(--line); }
 .no-overlap { color: var(--warn); }
+
+/* ── saved meetings ── */
+.meetings { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .75rem; }
+.mtg { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .85rem; background: var(--panel-2); display: flex; flex-direction: column; gap: .35rem; }
+.mtg.booked { border-color: var(--good); }
+.mtg-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.status-pill { font-size: .65rem; text-transform: uppercase; letter-spacing: .04em; padding: 1px 7px; border-radius: 999px; background: var(--line); color: var(--muted); }
+.status-pill.booked { background: rgba(16,185,129,.25); color: #6ee7b7; }
+.mtg-notes { font-size: .8rem; color: var(--text); white-space: pre-wrap; background: rgba(0,0,0,.2); padding: .4rem .5rem; border-radius: 7px; max-height: 7rem; overflow: auto; }
+.mtg-actions { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .15rem; }
+.mtg-actions .btn { padding: .3rem .55rem; font-size: .76rem; text-decoration: none; }
+.btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+/* ── dialog ── */
+.dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.25rem; width: min(440px, 92vw); }
+.dialog::backdrop { background: rgba(2,6,18,.6); backdrop-filter: blur(2px); }
+.dialog h3 { margin: 0 0 .25rem; }
+.dialog form { display: flex; flex-direction: column; gap: .7rem; }
+.dialog label { display: flex; flex-direction: column; gap: .3rem; font-size: .82rem; color: var(--muted); }
+.dialog textarea { background: var(--panel-2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: .5rem .6rem; font: inherit; resize: vertical; }
 
 /* ── toast ── */
 .toast { position: fixed; bottom: 1.25rem; left: 50%; transform: translateX(-50%) translateY(20px);
