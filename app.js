@@ -69,6 +69,7 @@ let showBands = localStorage.getItem('tzclock.bands') !== '0';    // working-hou
 let dayNight = localStorage.getItem('tzclock.daynight') === '1';   // day/night gradient view
 let compact = localStorage.getItem('tzclock.compact') === '1';     // dense rows
 let expandedPeople = new Set();                                    // per-person expanded lanes
+let selectedPeople = new Set();                                    // roster multi-select (member indices)
 let povPerson = -1;                                                // person whose POV is shown (-1 = device tz)
 let search = '';
 let userZoomed = localStorage.getItem('tzclock.userZoom') === '1';
@@ -111,6 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
   bindControls();
   bindBoard();
   bindMeetingDialog();
+  bindBulkAdd();
   setupComboboxes();
 
   window.addEventListener('hashchange', () => {
@@ -639,8 +641,16 @@ function renderRoster() {
   box.querySelectorAll('.person').forEach(chip => {
     chip.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', chip.dataset.gi); chip.classList.add('dragging'); });
     chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
-    chip.addEventListener('click', () => { startEdit(+chip.dataset.gi); openDrawer(); });
+    chip.addEventListener('click', e => { if (e.target.closest('.person-check')) return; startEdit(+chip.dataset.gi); openDrawer(); });
   });
+  box.querySelectorAll('.person-check').forEach(cb => cb.addEventListener('click', e => {
+    e.stopPropagation();
+    const gi = +cb.dataset.gi;
+    cb.checked ? selectedPeople.add(gi) : selectedPeople.delete(gi);
+    cb.closest('.person').classList.toggle('selected', cb.checked);
+    renderSelectBar();
+  }));
+  renderSelectBar();
   box.querySelectorAll('.team-group').forEach(grp => {
     grp.addEventListener('dragover', e => { e.preventDefault(); grp.classList.add('drop'); });
     grp.addEventListener('dragleave', () => grp.classList.remove('drop'));
@@ -654,9 +664,33 @@ function renderRoster() {
 
 function personChip(m, gi) {
   const initials = m.name.trim().slice(0, 1).toUpperCase() || '?';
-  return `<span class="person" draggable="true" data-gi="${gi}" title="Drag to a team · click to edit">
+  const sel = selectedPeople.has(gi);
+  return `<span class="person${sel ? ' selected' : ''}" draggable="true" data-gi="${gi}" title="Click to edit · checkbox to select">
+    <input type="checkbox" class="person-check" data-gi="${gi}" ${sel ? 'checked' : ''} aria-label="Select ${esc(m.name)}" />
     <span class="avatar" style="background:${colorOf(m)}">${esc(initials)}</span>
     ${esc(m.name)} <span class="ptz">${esc(labelForTz(m.tz))}</span></span>`;
+}
+
+function renderSelectBar() {
+  const bar = $('selectBar');
+  for (const gi of [...selectedPeople]) if (!state.members[gi]) selectedPeople.delete(gi);
+  const n = selectedPeople.size;
+  bar.hidden = n === 0;
+  if (n === 0) { bar.innerHTML = ''; return; }
+  bar.innerHTML = `<span class="sel-count">${n} selected</span>
+    <button class="btn ghost sm danger" id="delSelected">🗑 Delete</button>
+    <button class="btn ghost sm" id="clearSelected">Clear</button>`;
+  $('delSelected').addEventListener('click', deleteSelected);
+  $('clearSelected').addEventListener('click', () => { selectedPeople.clear(); renderRoster(); });
+}
+function deleteSelected() {
+  const n = selectedPeople.size;
+  if (!n) return;
+  if (!confirm(`Delete ${n} teammate${n > 1 ? 's' : ''}? This can't be undone.`)) return;
+  state.members = state.members.filter((_, gi) => !selectedPeople.has(gi));
+  selectedPeople.clear();
+  expandedPeople.clear(); boardPeople.clear(); povPerson = -1;   // indices shifted — reset volatile sets
+  render();
 }
 
 // ── planner ──────────────────────────────────────────────────────────────────
@@ -837,6 +871,33 @@ function setupComboboxes() {
 // Inline add from the dotted row under the timeline: type a name, pick a zone,
 // and the teammate appears on the board — no drawer, no Add button. Defaults to
 // 9–5, no team; edit later for hours/team/days-off.
+// ── bulk add (paste "Name, City" lines) ────────────────────────────────────────
+function parseBulk(text) {
+  return String(text).split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+    const i = line.indexOf(',');
+    const name = (i >= 0 ? line.slice(0, i) : line).trim();
+    const loc = (i >= 0 ? line.slice(i + 1) : '').trim();
+    const tz = (name && loc) ? (parseOffsetZone(loc) || (tzSearch(loc, 1)[0] || {}).tz || (isValidZone(loc) ? loc : '')) : '';
+    return { name, tz };
+  });
+}
+function bindBulkAdd() {
+  const dlg = $('bulkDialog');
+  $('bulkAddBtn').addEventListener('click', () => { $('bulkText').value = ''; $('bulkPreview').textContent = ''; dlg.showModal(); });
+  $('bulkText').addEventListener('input', () => {
+    const rows = parseBulk($('bulkText').value);
+    $('bulkPreview').textContent = rows.length ? `${rows.filter(r => r.tz).length} of ${rows.length} line(s) resolve to a zone.` : '';
+  });
+  dlg.addEventListener('close', () => {
+    if (dlg.returnValue !== 'add') return;
+    const rows = parseBulk($('bulkText').value).filter(r => r.tz);
+    if (!rows.length) { toast('No valid lines to add.'); return; }
+    rows.forEach(r => state.members.push({ name: r.name, tz: r.tz, start: 9, end: 17, teamId: '', weekend: DEFAULT_WEEKEND.slice(), always: false }));
+    render();
+    toast(`➕ Added ${rows.length} teammate${rows.length > 1 ? 's' : ''}.`);
+  });
+}
+
 function addInlineMember(tz) {
   const name = $('addName').value.trim();
   if (!name) { toast('Type a name first.'); $('addName').focus(); return; }

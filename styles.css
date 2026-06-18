@@ -272,6 +272,14 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 
 .tl-track.work { height: var(--lane-h); border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
   background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(var(--hour-w) - 1px), var(--line) calc(var(--hour-w) - 1px), var(--line) var(--hour-w)); }
+/* roster multi-select */
+.select-bar { display: flex; align-items: center; gap: .5rem; padding: .4rem .55rem; margin-bottom: .5rem;
+  background: var(--accent-soft); border: 1px solid var(--accent); }
+.sel-count { font-size: .78rem; font-weight: 700; color: var(--accent); flex: 1; }
+.person-check { accent-color: var(--accent); cursor: pointer; flex: none; margin-right: 1px; }
+.person.selected { box-shadow: 0 0 0 2px var(--accent); }
+#bulkText { width: 100%; font-family: var(--font-mono); font-size: .82rem; }
+
 /* inline add-a-teammate row */
 .add-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .55rem; border: 1px dashed var(--line-strong);
   background: color-mix(in srgb, var(--accent) 3%, transparent); flex: none; }

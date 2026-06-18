@@ -125,10 +125,12 @@
           <h2>👥 Team</h2>
           <div class="head-actions">
             <input id="search" class="mini-search" placeholder="Search…" aria-label="Search teammates" />
+            <button id="bulkAddBtn" class="btn ghost sm" title="Paste several at once">＋＋ Many</button>
             <button id="openAdd" class="btn primary sm">＋ Person</button>
           </div>
         </div>
-        <p class="muted small">Drag a person onto a team to move them.</p>
+        <p class="muted small">Drag onto a team to move · checkbox to multi-select.</p>
+        <div id="selectBar" class="select-bar" hidden></div>
         <div id="roster" class="roster"></div>
         <button id="openTeams" class="btn ghost block">＋ Manage teams</button>
       </section>
@@ -247,6 +249,20 @@
       </label>
       <div class="form-actions">
         <button value="save" class="btn primary">Save meeting</button>
+        <button value="cancel" class="btn ghost" formnovalidate>Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Bulk add — paste several teammates at once -->
+  <dialog id="bulkDialog" class="dialog">
+    <form method="dialog">
+      <h3>Add several teammates</h3>
+      <p class="muted small">One per line: <code>Name, City</code> (or <code>Name, +5:30</code>). Defaults to 9–5, no team.</p>
+      <textarea id="bulkText" rows="8" placeholder="Mia, New York&#10;Priya, India&#10;Kenji, Tokyo&#10;Sam, +5:30"></textarea>
+      <p id="bulkPreview" class="muted small"></p>
+      <div class="form-actions">
+        <button value="add" class="btn primary">Add all</button>
         <button value="cancel" class="btn ghost" formnovalidate>Cancel</button>
       </div>
     </form>
