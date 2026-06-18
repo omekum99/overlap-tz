@@ -223,6 +223,23 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 .lane-expand:hover { color: var(--accent); opacity: 1; }
 .lane-expand.expanded { transform: rotate(90deg); }
 
+/* drag-to-reorder grip */
+.lane-grip { flex: none; cursor: grab; color: var(--muted); font-size: .8rem; line-height: 1; opacity: .35;
+  user-select: none; transition: opacity .12s; }
+.lane:hover .lane-grip { opacity: .9; }
+.lane-grip:active { cursor: grabbing; }
+.lane.dragging { opacity: .5; }
+.lane.drop-above .tl-label { box-shadow: inset 0 2px 0 var(--accent); }
+.lane.drop-below .tl-label { box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* lane actions (POV + delete) — revealed on hover, anchored right, occluding the meta */
+.lane-actions { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: flex; gap: 1px;
+  align-items: center; background: var(--bg); padding-left: 4px; opacity: 0; transition: opacity .12s; }
+.lane:hover .lane-actions, .lane.pov .lane-actions { opacity: 1; }
+.lane-del { flex: none; background: transparent; border: none; color: var(--muted); cursor: pointer;
+  font-size: .8rem; padding: 0 3px; border-radius: 2px; line-height: 1; }
+.lane-del:hover { color: #fff; background: var(--now); }
+
 /* expanded lane detail row */
 .lane-detail { display: none; font-size: .62rem; color: var(--muted); background: var(--bg-3);
   border-bottom: 1px solid var(--line); }
@@ -265,7 +282,8 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 .lane:hover .tl-label { background: var(--bg-3); }
 .lane .tl-label { height: var(--lane-h); }
 .dot { width: 9px; height: 9px; border-radius: var(--avatar-r); flex: none; }
-.who { min-width: 0; }
+.who { min-width: 0; flex: 1; overflow: hidden; }
+.tl-label { overflow: hidden; }   /* clip any actions/labels to the sticky column */
 .who .name { font-weight: 600; font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .who .meta { font-size: .65rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tag-off { font-size: .56rem; background: var(--line); color: var(--muted); padding: 0 5px; margin-left: 4px; }
@@ -318,7 +336,7 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 .lane.pov { background: var(--accent-soft); }
 .lane.pov .tl-label { background: var(--accent-soft); }
 /* live local-time chip — rides the vertical scrubber line at each person's row */
-.live { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none;
+.live { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 3; pointer-events: none;
   font-family: var(--font-mono); font-size: .6rem; font-weight: 700; padding: 1px 4px; white-space: nowrap;
   background: var(--bg-2); color: var(--text); border: 1px solid var(--line-strong); box-shadow: 0 1px 3px rgba(0,0,0,.22); }
 .live.working { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }

@@ -407,13 +407,17 @@ function renderLanes() {
     const expandIcon = isExpanded ? '▾' : '▸';
     row.innerHTML = `
       <div class="tl-label">
+        <span class="lane-grip" draggable="true" title="Drag to reorder">⠿</span>
         <span class="dot" style="background:${colorOf(m)}"></span>
         <button class="lane-expand ${isExpanded ? 'expanded' : ''}" data-expand="${gi}" title="Toggle details">${expandIcon}</button>
         <div class="who">
           <div class="name">${esc(m.name)}${off ? ' <span class="tag-off">off</span>' : ''}</div>
           <div class="meta">${esc(labelForTz(m.tz))} · ${hoursLabel(m)} · <span class="mono">${offset}</span></div>
         </div>
-        <button class="lane-tz ${gi === povPerson ? 'active' : ''}" data-ltz="${esc(m.tz)}" data-gi="${gi}" title="${gi === povPerson ? esc(m.name) + "'s view — click to reset" : 'View board from ' + esc(m.name) + "'s perspective"}">⌖</button>
+        <div class="lane-actions">
+          <button class="lane-tz ${gi === povPerson ? 'active' : ''}" data-ltz="${esc(m.tz)}" data-gi="${gi}" title="${gi === povPerson ? esc(m.name) + "'s view — click to reset" : 'View board from ' + esc(m.name) + "'s perspective"}">⌖</button>
+          <button class="lane-del" data-del="${gi}" title="Remove ${esc(m.name)}">✕</button>
+        </div>
       </div>
       <div class="tl-track work${dayNight ? ' dn' : ''}"${trackStyle}>${dn}${bands}${handles}<span class="live mono" id="live-${gi}"></span></div>`;
     wrap.appendChild(row);
@@ -478,6 +482,36 @@ function startBandDrag(e, gi, edge) {
   document.addEventListener('pointerup', up);
 }
 
+// ── reorder / delete members (remap the index-keyed UI sets) ───────────────────
+// Map an old member index through a single-element move (from → insertion `to`).
+function remapMove(i, from, to) {
+  const at = to > from ? to - 1 : to;       // index the moved element lands on
+  if (i === from) return at;
+  let n = i > from ? i - 1 : i;             // removal shift
+  if (n >= at) n++;                         // insertion shift
+  return n;
+}
+function moveMember(from, to) {
+  const at = to > from ? to - 1 : to;
+  if (from === at) return;
+  const el = state.members.splice(from, 1)[0];
+  state.members.splice(at, 0, el);
+  expandedPeople = new Set([...expandedPeople].map(i => remapMove(i, from, to)));
+  boardPeople = new Set([...boardPeople].map(i => remapMove(i, from, to)));
+  selectedPeople = new Set([...selectedPeople].map(i => remapMove(i, from, to)));
+  if (povPerson >= 0) povPerson = remapMove(povPerson, from, to);
+  render(); save();
+}
+function deleteMemberAt(gi) {
+  state.members.splice(gi, 1);
+  const fix = set => new Set([...set].filter(i => i !== gi).map(i => i > gi ? i - 1 : i));
+  expandedPeople = fix(expandedPeople);
+  boardPeople = fix(boardPeople);
+  selectedPeople = fix(selectedPeople);
+  if (povPerson === gi) povPerson = -1; else if (povPerson > gi) povPerson--;
+  render(); save();
+}
+
 function xForHour(g) { return LW() + g * HW(); }      // g = global window hour (0..TOTAL_H)
 function scrubGlobal() { return gHour(CENTER_DAY, scrubHour); }   // pinned scrubber's global hour
 function daysBetween(a, b) { return Math.round(DateTime.fromISO(b).diff(DateTime.fromISO(a), 'days').days); }
@@ -499,13 +533,56 @@ function bindBoard() {
   const lanes = $('lanes');
   let downX = null;
 
-  // Per-person expand/collapse (single delegation, not per-render)
+  // Lane label actions: expand toggle + delete (single delegation, not per-render)
   lanes.addEventListener('click', e => {
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      const gi = +del.dataset.del, m = state.members[gi];
+      if (m && confirm(`Remove ${m.name}?`)) deleteMemberAt(gi);
+      return;
+    }
     const btn = e.target.closest('[data-expand]');
     if (!btn) return;
     const gi = +btn.dataset.expand;
     expandedPeople.has(gi) ? expandedPeople.delete(gi) : expandedPeople.add(gi);
     renderLanes(); positionMarkers(); updateScrub();
+  });
+
+  // Drag a lane (by its grip) to reorder; the order lives in the URL.
+  let dragGi = null;
+  lanes.addEventListener('dragstart', e => {
+    const grip = e.target.closest('.lane-grip');
+    if (!grip) return;
+    dragGi = +grip.closest('.lane').dataset.gi;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', 'lane');
+    grip.closest('.lane').classList.add('dragging');
+  });
+  lanes.addEventListener('dragover', e => {
+    if (dragGi == null) return;
+    e.preventDefault();
+    const row = e.target.closest('.lane');
+    lanes.querySelectorAll('.drop-above,.drop-below').forEach(r => r.classList.remove('drop-above', 'drop-below'));
+    if (!row || +row.dataset.gi === dragGi) return;
+    const r = row.getBoundingClientRect();
+    row.classList.add(e.clientY > r.top + r.height / 2 ? 'drop-below' : 'drop-above');
+  });
+  lanes.addEventListener('drop', e => {
+    if (dragGi == null) return;
+    e.preventDefault();
+    const row = e.target.closest('.lane');
+    lanes.querySelectorAll('.drop-above,.drop-below').forEach(r => r.classList.remove('drop-above', 'drop-below'));
+    if (row && +row.dataset.gi !== dragGi) {
+      const targetGi = +row.dataset.gi;
+      const r = row.getBoundingClientRect();
+      const after = e.clientY > r.top + r.height / 2;
+      moveMember(dragGi, after ? targetGi + 1 : targetGi);
+    }
+    dragGi = null;
+  });
+  lanes.addEventListener('dragend', () => {
+    dragGi = null;
+    lanes.querySelectorAll('.dragging,.drop-above,.drop-below').forEach(r => r.classList.remove('dragging', 'drop-above', 'drop-below'));
   });
 
   inner.addEventListener('pointermove', e => {
@@ -1015,7 +1092,7 @@ function bindControls() {
     if (editingIndex < 0) return;
     const m = state.members[editingIndex];
     if (!confirm(`Remove ${m.name} from the team?`)) return;
-    state.members.splice(editingIndex, 1); closeDrawer(); render();
+    const idx = editingIndex; closeDrawer(); deleteMemberAt(idx);
   });
 
   $('teamForm').addEventListener('submit', e => {
