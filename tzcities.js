@@ -126,10 +126,23 @@ function labelForTz(tz) {
   return `${city}${region ? ' · ' + region : ''}`;
 }
 
-// Search by city / country / alias. Ranked, capped.
+// "+5:30" / "utc+5:30" / "-8" / "+0530"  →  a Luxon fixed-offset zone "UTC+5:30".
+// Lets someone who only knows their offset skip the city search entirely.
+// (Fixed offset = no daylight-saving, which is honest for "I just know +5:30".)
+function parseOffsetZone(query) {
+  const m = /^\s*(?:utc|gmt)?\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?\s*$/i.exec(query || '');
+  if (!m) return null;
+  const h = +m[2], mm = m[3] ? +m[3] : 0;
+  if (h > 14 || mm > 59) return null;
+  return `UTC${m[1]}${h}${mm ? ':' + String(mm).padStart(2, '0') : ''}`;
+}
+
+// Search by city / country / alias / UTC offset. Ranked, capped.
 function tzSearch(query, limit = 8) {
   const q = (query || '').trim().toLowerCase();
   if (!q) return TZ_CURATED.slice(0, limit).map(c => ({ tz: c.tz, label: c.city === c.country ? c.city : `${c.city}, ${c.country}` }));
+  const off = parseOffsetZone(query);
+  const offHit = off ? [{ tz: off, label: off + ' · fixed offset' }] : [];
   const tokens = q.split(/\s+/);
   const scored = [];
   for (const e of TZ_INDEX) {
@@ -141,5 +154,5 @@ function tzSearch(query, limit = 8) {
     scored.push({ tz: e.tz, label: e.label, score });
   }
   scored.sort((a, b) => b.score - a.score || a.label.length - b.label.length);
-  return scored.slice(0, limit);
+  return offHit.concat(scored).slice(0, limit);   // offer the raw offset first when typed
 }

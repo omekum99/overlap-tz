@@ -116,7 +116,6 @@
             <option value="120">2 hours</option>
           </select>
         </div>
-        <div id="plannerScopeBar" class="scope-bar"></div>
         <div id="planner" class="planner"></div>
       </div>
     </section>
@@ -189,14 +188,23 @@
       </label>
       <label>Location / timezone
         <div class="combo" id="memberCombo">
-          <input id="mTz" class="combo-input" required placeholder="Search a city or country…" autocomplete="off"
+          <input id="mTz" class="combo-input" required placeholder="City, country, or UTC offset (+5:30)…" autocomplete="off"
                  role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="mTzList" />
           <ul id="mTzList" class="combo-list" role="listbox" hidden></ul>
         </div>
       </label>
-      <div class="row-2">
-        <label>Starts <input id="mStart" type="time" step="1800" value="09:00" required /></label>
-        <label>Ends <input id="mEnd" type="time" step="1800" value="17:00" required /></label>
+      <div class="hours-head">
+        <span class="hours-presets">
+          <button type="button" class="chip-btn" data-preset="9-17">9–5</button>
+          <button type="button" class="chip-btn" data-preset="10-18">10–6</button>
+          <button type="button" class="chip-btn" data-preset="8-16">8–4</button>
+          <button type="button" class="chip-btn" data-preset="22-6">Night</button>
+        </span>
+        <label class="checkbox inline"><input id="mAlways" type="checkbox" /> Always available</label>
+      </div>
+      <div class="row-2" id="hoursRow">
+        <label>Starts <input id="mStart" type="time" step="1800" value="09:00" /></label>
+        <label>Ends <input id="mEnd" type="time" step="1800" value="17:00" /></label>
       </div>
       <label class="checkbox"><input id="mOvernight" type="checkbox" /> Overnight shift (ends next day)</label>
       <div class="days-off">
