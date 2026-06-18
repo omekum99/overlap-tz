@@ -45,34 +45,19 @@
           <ul id="homeTzList" class="combo-list" role="listbox" hidden></ul>
         </div>
         <span class="spacer"></span>
-        <div class="settings-wrap">
-          <button id="settingsBtn" class="btn ghost icon-btn" title="Settings">⚙️</button>
-          <div id="settingsPanel" class="settings-panel" hidden>
-            <div class="sp-section">
-              <span class="sp-label">Layers</span>
-              <div class="layer-list">
-                <button id="bandsBtn" class="layer-toggle" title="Show working-hour bands"><span>Working hours</span><span class="sw"></span></button>
-                <button id="dayNightBtn" class="layer-toggle" title="Show day/night sky gradient"><span>Day / night sky</span><span class="sw"></span></button>
-                <button id="compactBtn" class="layer-toggle" title="Denser rows"><span>Compact rows</span><span class="sw"></span></button>
-                <button id="fmt12Btn" class="layer-toggle" title="12-hour clock"><span>12-hour clock</span><span class="sw"></span></button>
-              </div>
-            </div>
-            <div class="sp-section">
-              <span class="sp-label">Colours</span>
-              <label class="sp-color-row"><span>App accent</span><input type="color" id="accentPick" aria-label="App accent colour" /></label>
-              <div id="settingsTeamColors" class="sp-team-colors"></div>
-              <button id="resetColors" class="btn ghost sm">Reset team colours</button>
-            </div>
-            <div class="sp-section">
-              <span class="sp-label">Zoom</span>
-              <div class="sp-row">
-                <button id="zoomOut" class="btn ghost icon-btn" title="Zoom out">−</button>
-                <button id="fitBtn" class="btn ghost sm">Fit</button>
-                <button id="zoomIn" class="btn ghost icon-btn" title="Zoom in">+</button>
-              </div>
-            </div>
-          </div>
+        <!-- visible layer toggles (no hidden settings panel) -->
+        <div class="layer-pills" role="group" aria-label="Layers">
+          <button id="bandsBtn" class="pill" title="Working-hour bands">▤ Hours</button>
+          <button id="dayNightBtn" class="pill" title="Day / night sky gradient">☀ Sky</button>
+          <button id="compactBtn" class="pill" title="Compact rows">≡ Compact</button>
+          <button id="fmt12Btn" class="pill" title="12-hour clock">12h</button>
         </div>
+        <div class="zoom-group">
+          <button id="zoomOut" class="btn ghost icon-btn" title="Zoom out">−</button>
+          <button id="fitBtn" class="btn ghost sm">Fit</button>
+          <button id="zoomIn" class="btn ghost icon-btn" title="Zoom in">+</button>
+        </div>
+        <label class="accent-swatch" title="App accent colour"><input type="color" id="accentPick" aria-label="App accent colour" /></label>
       </div>
 
       <!-- team filters double as the planner scope -->

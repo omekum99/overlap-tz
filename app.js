@@ -157,7 +157,6 @@ function render() {
   renderTeamFilter();
   renderTeamSelect();
   renderTeamList();
-  renderSettingsColors();
   renderAxis();
   renderLanes();
   renderRoster();
@@ -250,18 +249,20 @@ function renderTeamFilter() {
 // ── timeline ───────────────────────────────────────────────────────────────
 function renderAxis() {
   const track = $('axisTrack');
-  track.innerHTML = '';
+  let html = '';
+  // Day headers as a strip on top — one per day, spanning its width, so the date
+  // never collides with the hour numbers.
+  for (let d = 0; d < WIN_DAYS; d++) {
+    const sel = d === CENTER_DAY;
+    html += `<div class="axis-day${sel ? ' sel' : ''}" style="left:${gHour(d, 0) / TOTAL_H * 100}%;width:${24 / TOTAL_H * 100}%">${DateTime.fromISO(winDayISO(d)).toFormat('ccc d LLL')}</div>`;
+  }
+  // Hour ticks below, hours only.
   for (let g = 0; g < TOTAL_H; g++) {
     const dayIdx = Math.floor(g / 24), h = g % 24;
-    const cell = document.createElement('div');
-    cell.className = 'tick' + (h === 0 ? ' daybreak' : '') + (dayIdx === CENTER_DAY ? ' focus-day' : '');
-    // At each midnight, label the day instead of "00" so boundaries read clearly.
-    const label = h === 0
-      ? DateTime.fromISO(winDayISO(dayIdx)).toFormat('ccc d')
-      : (HOUR_12 ? hourLabel(h) : String(h).padStart(2, '0'));
-    cell.innerHTML = `<span>${label}</span>`;
-    track.appendChild(cell);
+    const cls = 'tick' + (h === 0 ? ' daybreak' : '') + (dayIdx === CENTER_DAY ? ' focus-day' : '');
+    html += `<div class="${cls}"><span>${HOUR_12 ? hourLabel(h) : String(h).padStart(2, '0')}</span></div>`;
   }
+  track.innerHTML = html;
 }
 
 // Their UTC offset on the selected date, e.g. "UTC+5:30" / "UTC−4".
@@ -926,13 +927,6 @@ function bindControls() {
     const v = !HOUR_12; setHour12(v); localStorage.setItem('tzclock.fmt12', v ? '1' : '0');
     toggleSync('fmt12Btn', v); render();
   });
-  // Settings panel toggle
-  const settingsBtn = $('settingsBtn');
-  const settingsPanel = $('settingsPanel');
-  if (settingsBtn && settingsPanel) {
-    settingsBtn.addEventListener('click', () => { settingsPanel.hidden = !settingsPanel.hidden; });
-    document.addEventListener('click', e => { if (!settingsPanel.hidden && !e.target.closest('.settings-wrap') && !e.target.closest('.color-pop')) settingsPanel.hidden = true; });
-  }
   $('search').addEventListener('input', e => { search = e.target.value; renderLanes(); renderRoster(); updateScrub(); });
   $('duration').addEventListener('change', renderPlanner);
   $('blockBtn').addEventListener('click', () => {
@@ -975,10 +969,6 @@ function bindControls() {
   });
 
   $('accentPick').addEventListener('input', e => { applyAccent(e.target.value); localStorage.setItem('tzclock.accent', e.target.value); });
-  $('resetColors').addEventListener('click', () => {
-    state.teams.forEach((t, i) => { t.color = i % TEAM_COLORS.length; delete t.customColor; });
-    render();
-  });
 
   $('sideToggle').addEventListener('click', () => {
     const collapsed = document.querySelector('.app').classList.toggle('side-collapsed');
@@ -1037,16 +1027,6 @@ function renderTeamList() {
     activeTeams.delete(id);
     render();
   }));
-}
-
-// Central colour management in Settings → Colours: every team's swatch in one place.
-function renderSettingsColors() {
-  const box = $('settingsTeamColors');
-  if (!box) return;
-  if (state.teams.length === 0) { box.innerHTML = '<span class="muted small">No teams yet.</span>'; return; }
-  box.innerHTML = state.teams.map(t =>
-    `<div class="sp-tc-row"><button class="dot dot-btn" style="background:${teamColor(t)}" data-colorteam="${t.id}" aria-label="${esc(t.name)} colour"></button>${esc(t.name)}</div>`).join('');
-  box.querySelectorAll('[data-colorteam]').forEach(b => b.addEventListener('click', () => openColorPicker(b.dataset.colorteam, b)));
 }
 
 // ── team colour picker (palette swatches + custom) ─────────────────────────────
