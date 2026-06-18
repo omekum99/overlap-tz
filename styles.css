@@ -251,6 +251,17 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 
 .tl-track.work { height: var(--lane-h); border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
   background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(var(--hour-w) - 1px), var(--line) calc(var(--hour-w) - 1px), var(--line) var(--hour-w)); }
+/* inline add-a-teammate row */
+.add-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .55rem; border: 1px dashed var(--line-strong);
+  background: color-mix(in srgb, var(--accent) 3%, transparent); flex: none; }
+.add-row-plus { color: var(--accent); font-weight: 700; font-size: 1rem; flex: none; }
+.add-name { flex: 1.2; min-width: 0; border: none; background: transparent; font-size: .85rem; padding: .25rem; }
+.add-name:focus { outline: none; box-shadow: none; }
+.add-combo { flex: 1; min-width: 120px; }
+.add-combo .combo-input { padding: .3rem .5rem; font-size: .8rem; }
+.add-row-hint { flex: none; }
+@media (max-width: 700px) { .add-row-hint { display: none; } }
+
 .band { position: absolute; top: 6px; bottom: 6px; background: var(--bc, var(--band)); opacity: .92; }
 .lane.off .band { opacity: .25; }
 .lane.off .tl-track.work { background-color: color-mix(in srgb, var(--muted) 8%, transparent); }

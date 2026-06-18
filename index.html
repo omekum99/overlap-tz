@@ -97,6 +97,18 @@
         </div>
       </div>
 
+      <!-- inline add-a-teammate row — type a name, pick a zone, they appear above -->
+      <div class="add-row" id="addRow">
+        <span class="add-row-plus">＋</span>
+        <input id="addName" class="add-name" placeholder="Add a teammate — type their name…" maxlength="30" aria-label="New teammate name" />
+        <div class="combo add-combo">
+          <input id="addTz" class="combo-input" placeholder="city or +5:30" autocomplete="off"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="addTzList" aria-label="New teammate timezone" />
+          <ul id="addTzList" class="combo-list" role="listbox" hidden></ul>
+        </div>
+        <span class="add-row-hint muted small">pick a zone to add · defaults to 9–5, no team</span>
+      </div>
+
       <!-- meeting planner -->
       <div class="planner-strip">
         <div class="planner-head">

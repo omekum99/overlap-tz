@@ -769,6 +769,22 @@ function getDaysOff() { return [...document.querySelectorAll('#mDaysOff .day-tog
 function setupComboboxes() {
   makeCombo($('mTz'), $('mTzList'), () => {});
   makeCombo($('homeTz'), $('homeTzList'), setHomeTz);
+  makeCombo($('addTz'), $('addTzList'), addInlineMember);
+  $('addName').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('addTz').focus(); } });
+}
+
+// Inline add from the dotted row under the timeline: type a name, pick a zone,
+// and the teammate appears on the board — no drawer, no Add button. Defaults to
+// 9–5, no team; edit later for hours/team/days-off.
+function addInlineMember(tz) {
+  const name = $('addName').value.trim();
+  if (!name) { toast('Type a name first.'); $('addName').focus(); return; }
+  if (!isValidZone(tz)) return;
+  state.members.push({ name, tz, start: 9, end: 17, teamId: '', weekend: DEFAULT_WEEKEND.slice(), always: false });
+  $('addName').value = ''; $('addTz').value = ''; $('addTz').dataset.tz = '';
+  render();
+  $('addName').focus();
+  toast('➕ Added ' + name);
 }
 
 // Explicitly view the whole board in a chosen zone. Unlike POV (which re-bases to
