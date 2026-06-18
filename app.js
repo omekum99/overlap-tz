@@ -28,8 +28,6 @@ let scrubHour = nowAxisHour(homeTz);    // pinned scrubber position (home-tz hou
 let activeTeams = new Set();            // team ids shown on the board; empty = everyone
 let boardCustom = false;                // board "Custom" mode: pick specific people
 let boardPeople = new Set();            // member indices shown when boardCustom
-let plannerTeams = new Set();           // "Find a time" scope: team ids (empty = everyone)
-let plannerPeople = new Set();          // "Find a time" scope: specific member indices (overrides teams)
 let showBands = localStorage.getItem('tzclock.bands') !== '0';    // working-hour bands
 let dayNight = localStorage.getItem('tzclock.daynight') === '1';   // day/night gradient view
 let dayNightPalette = +(localStorage.getItem('tzclock.palette') ?? 1);  // which DN_PALETTES entry
@@ -96,6 +94,12 @@ function save() {
     b.textContent = `${len} chars`;
     b.classList.toggle('warn', len > SAFE_URL_LEN);
   });
+  mirrorWorkspace();
+}
+// Keep a plain-JSON copy of the workspace in localStorage so it's easy to read,
+// inspect, or recover — the URL stays the source of truth, this just mirrors it.
+function mirrorWorkspace() {
+  try { localStorage.setItem('tzclock.workspace.' + state.wid, JSON.stringify(state)); } catch (err) { /* quota/full — non-fatal */ }
 }
 function persistMeetings() { saveMeetings(state.wid, meetings); }
 
@@ -145,6 +149,7 @@ function scopeMembers() {
   return state.members.filter((m, gi) => inBoardScope(gi, m));
 }
 function teamById(id) { return state.teams.find(t => t.id === id); }
+function hoursLabel(m) { return m.always ? 'Always available' : `${hourLabel(m.start)}–${hourLabel(m.end)}`; }
 function colorOf(member) {
   const t = teamById(member.teamId);
   return t ? TEAM_COLORS[t.color % TEAM_COLORS.length] : '#94a3b8';
@@ -346,7 +351,7 @@ function renderLanes() {
         <div class="who">
           <div class="name">${esc(m.name)}${off ? ' <span class="tag-off">off</span>' : ''}
             <span class="off-pill mono">${offset}</span></div>
-          <div class="meta">${esc(labelForTz(m.tz))} · ${hourLabel(m.start)}–${hourLabel(m.end)}</div>
+          <div class="meta">${esc(labelForTz(m.tz))} · ${hoursLabel(m)}</div>
         </div>
         <button class="lane-tz ${gi === povPerson ? 'active' : ''}" data-ltz="${esc(m.tz)}" data-gi="${gi}" title="${gi === povPerson ? esc(m.name) + "'s view — click to reset" : 'View board from ' + esc(m.name) + "'s perspective"}">⌖</button>
       </div>
@@ -362,7 +367,7 @@ function renderLanes() {
           <span class="utc-big">${offset}</span>
           <span>📍 ${esc(labelForTz(m.tz))}</span>
           <span>🕐 <span class="local-clock">${localNow.label}</span></span>
-          <span>⏰ ${hourLabel(m.start)}–${hourLabel(m.end)}</span>
+          <span>⏰ ${hoursLabel(m)}</span>
           ${off ? '<span>🔴 Off today</span>' : '<span>🟢 Working today</span>'}
         </div>`;
       wrap.appendChild(detail);
@@ -568,69 +573,29 @@ function slotIsBusy(startH, durH, cells) {
 }
 function refreshPlanner() { renderPlanner(); positionMarkers(); }
 
-// "Find a time" has its OWN scope, independent of what's drawn on the board:
-// pick whole teams, or a custom set of specific people (which takes precedence).
-function prunePlannerScope() {
-  for (const id of [...plannerTeams]) if (!teamById(id)) plannerTeams.delete(id);
-  for (const i of [...plannerPeople]) if (!state.members[i]) plannerPeople.delete(i);
-}
-function plannerScopeMembers() {
-  if (plannerPeople.size) return [...plannerPeople].map(i => state.members[i]).filter(Boolean);
-  return state.members.filter(m => plannerTeams.size === 0 || plannerTeams.has(m.teamId));
-}
-function plannerScopeLabel() {
-  if (plannerPeople.size) return `${plannerPeople.size} selected ${plannerPeople.size > 1 ? 'people' : 'person'}`;
-  if (plannerTeams.size === 0) return 'everyone';
-  if (plannerTeams.size === 1) return teamById([...plannerTeams][0])?.name || 'team';
-  return 'the selected teams';
-}
-function renderPlannerScopeBar() {
-  const box = $('plannerScopeBar');
-  const chip = (attr, val, label, on, dot) => `<button class="tf-chip ${dot ? 'person-chip' : ''} ${on ? 'active' : ''}" data-${attr}="${val}">${dot || ''}${esc(label)}</button>`;
-  const teamsActive = plannerTeams.size > 0 && plannerPeople.size === 0;
-  let html = '<span class="filters-label">Teams</span>';
-  html += chip('pteam', '__all', '🌐 Everyone', plannerTeams.size === 0 && plannerPeople.size === 0, '');
-  for (const t of state.teams) {
-    const dot = `<span class="dot" style="background:${TEAM_COLORS[t.color % TEAM_COLORS.length]}"></span>`;
-    html += chip('pteam', t.id, t.name, teamsActive && plannerTeams.has(t.id), dot);
-  }
-  if (state.members.length) {
-    html += '<span class="scope-sep">Focus people</span>';
-    state.members.forEach((m, gi) => {
-      const dot = `<span class="dot" style="background:${colorOf(m)}"></span>`;
-      html += chip('pperson', gi, m.name, plannerPeople.has(gi), dot);
-    });
-  }
-  box.innerHTML = html;
-  box.querySelectorAll('[data-pteam]').forEach(b => b.addEventListener('click', () => {
-    const id = b.dataset.pteam;
-    plannerPeople.clear();
-    if (id === '__all') plannerTeams.clear();
-    else { plannerTeams.has(id) ? plannerTeams.delete(id) : plannerTeams.add(id); }
-    refreshPlanner();
-  }));
-  box.querySelectorAll('[data-pperson]').forEach(b => b.addEventListener('click', () => {
-    const gi = +b.dataset.pperson;
-    plannerPeople.has(gi) ? plannerPeople.delete(gi) : plannerPeople.add(gi);
-    refreshPlanner();
-  }));
+// The planner follows whoever is shown on the board (the "Show" filter at the
+// top) — one scope, not a second duplicate selector. Narrow the board to a
+// sub-team and the planner narrows with it.
+function boardScopeLabel() {
+  if (boardCustom) return `${boardPeople.size} selected`;
+  if (activeTeams.size === 0) return 'everyone';
+  const names = [...activeTeams].map(id => teamById(id)?.name).filter(Boolean);
+  return names.length === 1 ? names[0] : 'the selected teams';
 }
 
 function renderPlanner() {
-  prunePlannerScope();
-  renderPlannerScopeBar();
-  const scope = plannerScopeMembers();
+  const scope = scopeMembers();
   const working = scope.filter(m => !isMemberOff(m, refDate));
   const offToday = scope.filter(m => isMemberOff(m, refDate));
-  $('plannerScopeName').textContent = plannerScopeLabel();
+  $('plannerScopeName').textContent = boardScopeLabel();
 
   const box = $('planner');
   const offNote = offToday.length
     ? `<p class="muted small off-note">Off today: ${offToday.map(m => esc(m.name)).join(', ')} (excluded)</p>` : '';
-  if (working.length < 2) { box.innerHTML = offNote + '<p class="muted small">Need two available teammates.</p>'; return; }
+  if (working.length < 2) { box.innerHTML = offNote + '<p class="muted small">Pick at least two available teammates in “Show” above.</p>'; return; }
 
   const windows = findOverlapWindows(working, refDate, homeTz);
-  if (windows.length === 0) { box.innerHTML = offNote + '<p class="no-overlap small">No shared time today. Try a sub-team or another date.</p>'; return; }
+  if (windows.length === 0) { box.innerHTML = offNote + '<p class="no-overlap small">No shared time today. Narrow “Show” to a sub-team, or try another date.</p>'; return; }
 
   const durMin = +$('duration').value;
   const busy = busyCellsForDate();
@@ -860,6 +825,13 @@ function bindControls() {
   $('scrim').addEventListener('click', closeDrawer);
 
   $('memberForm').addEventListener('submit', onSubmitMember);
+  $('mAlways').addEventListener('change', syncAlways);
+  document.querySelectorAll('.hours-presets .chip-btn').forEach(b => b.addEventListener('click', () => {
+    const [s, e] = b.dataset.preset.split('-').map(Number);
+    $('mAlways').checked = false; syncAlways();
+    $('mStart').value = pad2(s) + ':00'; $('mEnd').value = pad2(e) + ':00';
+    $('mOvernight').checked = s >= e;
+  }));
   $('dummyBtn').addEventListener('click', addDummy);
   $('deleteMemberBtn').addEventListener('click', () => {
     if (editingIndex < 0) return;
@@ -936,29 +908,39 @@ function onSubmitMember(e) {
   const name = $('mName').value.trim();
   const raw = $('mTz').value.trim();
   const tz = $('mTz').dataset.tz || (tzSearch(raw, 1)[0] || {}).tz || (isValidZone(raw) ? raw : '');
+  const always = $('mAlways').checked;
   const start = parseTime($('mStart').value);
   const end = parseTime($('mEnd').value);
   const overnight = $('mOvernight').checked;
   const teamId = $('mTeam').value;
   const weekend = getDaysOff();
 
-  const err = validateMember({ name, tz, start, end, overnight });
+  const err = validateMember({ name, tz, start, end, overnight, always });
   const errEl = $('formError');
   if (err) { errEl.textContent = err; errEl.hidden = false; return; }
   errEl.hidden = true;
 
-  const member = { name, tz, start, end, teamId, weekend };
+  const member = { name, tz, start, end, teamId, weekend, always };
   if (editingIndex >= 0) state.members[editingIndex] = member; else state.members.push(member);
   closeDrawer(); render();
 }
 
-function validateMember({ name, tz, start, end, overnight }) {
+function validateMember({ name, tz, start, end, overnight, always }) {
   if (!name) return 'Please enter a name.';
-  if (!isValidZone(tz)) return 'Pick a location from the list (search a city or country).';
+  if (!isValidZone(tz)) return 'Pick a location, or type a UTC offset like +5:30.';
+  if (always) return null;                                  // "always available" ignores hours
   if (!isWorkHour(start) || !isWorkHour(end)) return 'Use 30-minute steps.';
   if (start === end) return 'Start and end cannot be the same.';
   if (!overnight && start >= end) return 'Start must be before end — or tick “Overnight shift”.';
   return null;
+}
+
+// Grey out the hours fields when "always available" is on.
+function syncAlways() {
+  const on = $('mAlways').checked;
+  $('hoursRow').classList.toggle('disabled', on);
+  document.querySelectorAll('.hours-presets .chip-btn').forEach(b => b.disabled = on);
+  $('mStart').disabled = on; $('mEnd').disabled = on;
 }
 
 function startEdit(gi) {
@@ -966,8 +948,10 @@ function startEdit(gi) {
   editingIndex = gi;
   $('mName').value = m.name;
   $('mTz').value = labelForTz(m.tz); $('mTz').dataset.tz = m.tz;
+  $('mAlways').checked = !!m.always;
   $('mStart').value = toTimeInput(m.start); $('mEnd').value = toTimeInput(m.end);
   $('mOvernight').checked = m.start >= m.end;
+  syncAlways();
   setDaysOff(m.weekend || DEFAULT_WEEKEND);
   renderTeamSelect(); $('mTeam').value = m.teamId;
   $('drawerTitle').textContent = 'Edit teammate';
@@ -978,7 +962,9 @@ function resetForm() {
   editingIndex = -1;
   $('memberForm').reset();
   $('mTz').dataset.tz = '';
+  $('mAlways').checked = false;
   $('mStart').value = '09:00'; $('mEnd').value = '17:00';
+  syncAlways();
   setDaysOff(DEFAULT_WEEKEND);
   $('formError').hidden = true;
   $('drawerTitle').textContent = 'Add a teammate';

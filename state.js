@@ -145,6 +145,7 @@ function encodeState(state) {
     mb: state.members.map(m => {
       const out = { n: m.name, t: tzToWire(m.tz), s: m.start, e: m.end, g: m.teamId || '' };
       if (!sameWeekend(m.weekend)) out.wk = m.weekend;   // only store when non-default
+      if (m.always) out.al = 1;                          // "always available" (ignores hours)
       return out;
     }),
   };
@@ -186,6 +187,7 @@ function decodeState(encoded) {
         name: m.n, tz: tzFromWire(m.t), start: m.s, end: m.e,   // resolve dict index → IANA first
         teamId: teamIds.has(m.g) ? m.g : '',
         weekend: Array.isArray(m.wk) ? m.wk.filter(d => d >= 1 && d <= 7) : DEFAULT_WEEKEND.slice(),
+        always: m.al === 1,
       }))
       .filter(m => isValidZone(m.tz));                          // then drop anything that didn't resolve
 

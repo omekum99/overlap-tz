@@ -73,6 +73,7 @@ function memberHourToAxis(memberHour, memberTz, isoDate, homeTz) {
 // Project the working band onto the axis. 1 interval, or 2 when it crosses the
 // axis midnight. Hours fractional.
 function bandToAxisIntervals(member, isoDate, homeTz) {
+  if (member.always) return [{ start: 0, end: 24 }];     // available the whole day
   const dur = mod24(member.end - member.start);
   if (dur === 0) return [];
   const s = memberHourToAxis(member.start, member.tz, isoDate, homeTz);
@@ -85,13 +86,15 @@ function bandToAxisIntervals(member, isoDate, homeTz) {
 function localAt(axisHour, member, isoDate, homeTz) {
   const inst = axisInstant(axisHour, isoDate, homeTz).setZone(member.tz);
   const lh = inst.hour + inst.minute / 60;
-  return { label: hourLabel(lh), working: isWithin(lh, member.start, member.end) };
+  const working = member.always ? true : isWithin(lh, member.start, member.end);
+  return { label: hourLabel(lh), working };
 }
 
 function memberWorkingAt(axisHour, member, isoDate, homeTz) {
   const inst = axisInstant(axisHour, isoDate, homeTz).setZone(member.tz);
   const weekend = member.weekend || [6, 7];
   if (weekend.includes(inst.weekday)) return false;       // their day off
+  if (member.always) return true;                         // available any hour
   return isWithin(inst.hour + inst.minute / 60, member.start, member.end);
 }
 
