@@ -103,6 +103,8 @@ textarea { resize: vertical; }
   overflow-y: auto;                  /* if the whole thing is tall, scroll the app */
   padding: var(--gap) 1.4rem 1.1rem;
 }
+.app.side-collapsed { grid-template-columns: minmax(0, 1fr); }
+.app.side-collapsed .side { display: none; }
 .card { background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .card-head h2 { font-size: 1.02rem; }
@@ -128,13 +130,18 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 .sp-row { display: flex; align-items: center; gap: .35rem; }
 .sp-row.toggles { flex-wrap: wrap; }
 
-/* toggle button — chip-style, active = filled */
-.toggle-btn { font-family: var(--font-body); font-size: .72rem; font-weight: 600;
-  border: 1px solid var(--line-strong); background: var(--bg-2); color: var(--muted);
-  padding: .22rem .5rem; cursor: pointer; white-space: nowrap;
-  transition: background .12s, color .12s, border-color .12s; }
-.toggle-btn:hover { border-color: var(--accent); color: var(--text); }
-.toggle-btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+/* layers — a clean list of on/off switches */
+.layer-list { display: flex; flex-direction: column; }
+.layer-toggle { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  font-family: var(--font-body); font-size: .8rem; font-weight: 500; color: var(--text);
+  background: none; border: none; padding: .34rem .1rem; cursor: pointer; width: 100%; }
+.layer-toggle:hover { color: var(--accent); }
+.layer-toggle .sw { flex: none; width: 30px; height: 17px; border-radius: 999px;
+  background: var(--line-strong); position: relative; transition: background .15s; }
+.layer-toggle .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+.layer-toggle.active .sw { background: var(--accent); }
+.layer-toggle.active .sw::after { transform: translateX(13px); }
 
 /* date strip wrap with arrows */
 .date-strip-wrap { display: flex; align-items: center; gap: 0; }
@@ -216,8 +223,8 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 .board::-webkit-scrollbar { height: 12px; width: 10px; }
 .board::-webkit-scrollbar-thumb { background: var(--line-strong); border: 3px solid var(--bg); border-radius: 0; }
 .board::-webkit-scrollbar-track { background: var(--bg-3); }
-.board-inner { position: relative; width: calc(var(--label-w) + var(--hour-w) * 24); min-width: 100%; }
-.tl-row { display: grid; grid-template-columns: var(--label-w) calc(var(--hour-w) * 24); }
+.board-inner { position: relative; width: calc(var(--label-w) + var(--hour-w) * var(--total-h, 24)); min-width: 100%; }
+.tl-row { display: grid; grid-template-columns: var(--label-w) calc(var(--hour-w) * var(--total-h, 24)); }
 .tl-label { position: sticky; left: 0; z-index: 4; background: var(--bg);
   display: flex; align-items: center; gap: .5rem; padding: 0 .7rem; border-right: 1px solid var(--line); }
 .axis { position: sticky; top: 0; z-index: 6; background: var(--bg); border-bottom: 1px solid var(--line-strong); }
@@ -228,7 +235,10 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 .tick { width: var(--hour-w); flex: none; border-left: 1px solid var(--line); font-family: var(--font-mono);
   font-size: .62rem; color: var(--muted); padding: 4px 0 0 4px; }
 .tick:first-child { border-left: none; }
-.tick.daybreak { border-left-color: var(--line-strong); }
+.tick.daybreak { border-left: 2px solid var(--line-strong); }
+.tick.daybreak span { font-weight: 700; color: var(--text); white-space: nowrap; overflow: visible; }
+.tick.focus-day { color: var(--text); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tick.focus-day.daybreak span { color: var(--accent); }
 
 .lane { align-items: stretch; }
 .lane:hover .tl-label { background: var(--bg-3); }
@@ -360,6 +370,18 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
   padding: .42rem .55rem; cursor: pointer; font-size: .84rem; }
 .cb-item.active, .cb-item:hover { background: var(--accent-soft); }
 .cb-item .cb-tz { font-family: var(--font-mono); font-size: .66rem; color: var(--muted); }
+
+/* ── team colour picker ── */
+.dot-btn { border: 1px solid rgba(0,0,0,.15); cursor: pointer; padding: 0; }
+.dot-btn:hover { box-shadow: 0 0 0 2px var(--accent-soft); }
+.color-pop { position: fixed; z-index: 90; background: var(--bg-2); border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow); padding: .55rem; display: flex; flex-direction: column; gap: .5rem; }
+.cp-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: .35rem; }
+.cp-swatch { width: 22px; height: 22px; border: 1px solid rgba(0,0,0,.15); cursor: pointer; padding: 0; }
+.cp-swatch:hover { transform: scale(1.12); }
+.cp-swatch.sel { box-shadow: 0 0 0 2px var(--text); }
+.cp-custom { display: flex; align-items: center; gap: .4rem; font-size: .72rem; color: var(--muted); }
+.cp-custom input[type=color] { width: 28px; height: 22px; padding: 0; border: 1px solid var(--line-strong); cursor: pointer; background: none; }
 
 /* ── drawer ── */
 .scrim { position: fixed; inset: 0; background: rgba(20,20,12,.4); z-index: 50; backdrop-filter: blur(2px); }

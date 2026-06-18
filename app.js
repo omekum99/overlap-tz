@@ -14,11 +14,39 @@
  * `DateTime` comes from timeutil.js (classic scripts share one global scope).
  */
 
-const TEAM_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#ef4444', '#14b8a6', '#f97316'];
+// Central team palette — 12 hues at a fixed saturation/lightness so every team
+// color is equally vivid and harmonious (color theory: same S/L, spread hue).
+// Ordered to keep neighbours visually distinct. Stored as hex so the native
+// colour picker and CSS agree. A team holds an index into this, or an arbitrary
+// `customColor` hex when overridden.
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(255 * c).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+const TEAM_HUES = [212, 28, 150, 330, 265, 45, 122, 352, 190, 88, 300, 14];
+const TEAM_COLORS = TEAM_HUES.map(h => hslToHex(h, 62, 52));
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];   // Mon=1 .. Sun=7
 const SAFE_URL_LEN = 1800;
 const ZOOM_MIN = 30, ZOOM_MAX = 120;
 const DUR_OPTS = [15, 30, 45, 60, 90, 120];               // meeting-dialog lengths
+
+// Continuous timeline: the board is a sliding window of WIN_DAYS days rendered
+// as one horizontal strip. refDate is the *focused* day, sitting at CENTER_DAY.
+// All timeline positions are "global hours" g = dayIndex*24 + hourWithinDay,
+// 0..TOTAL_H across the window.
+const WIN_BEFORE = 1, WIN_AFTER = 1;
+const WIN_DAYS = WIN_BEFORE + 1 + WIN_AFTER;
+const TOTAL_H = WIN_DAYS * 24;
+const CENTER_DAY = WIN_BEFORE;
+function winDayISO(i) { return shiftISO(refDate, i - CENTER_DAY); }
+function gHour(dayIdx, hour) { return dayIdx * 24 + hour; }
+function gToDay(g) { return Math.max(0, Math.min(WIN_DAYS - 1, Math.floor(g / 24))); }
 
 let state = clone(EMPTY_STATE);
 let meetings = [];
@@ -30,7 +58,6 @@ let boardCustom = false;                // board "Custom" mode: pick specific pe
 let boardPeople = new Set();            // member indices shown when boardCustom
 let showBands = localStorage.getItem('tzclock.bands') !== '0';    // working-hour bands
 let dayNight = localStorage.getItem('tzclock.daynight') === '1';   // day/night gradient view
-let dayNightPalette = +(localStorage.getItem('tzclock.palette') ?? 1);  // which DN_PALETTES entry
 let compact = localStorage.getItem('tzclock.compact') === '1';     // dense rows
 let expandedPeople = new Set();                                    // per-person expanded lanes
 let povPerson = -1;                                                // person whose POV is shown (-1 = device tz)
@@ -59,14 +86,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // First-visit onboarding
   if (!localStorage.getItem('tzclock.onboarded')) showOnboarding();
 
-  if (!Number.isInteger(dayNightPalette) || dayNightPalette < 0 || dayNightPalette >= DN_PALETTES.length) dayNightPalette = 1;
-  $('paletteSelect').innerHTML = DN_PALETTES.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join('');
-  $('paletteSelect').value = String(dayNightPalette);
   document.documentElement.style.setProperty('--hour-w', zoom + 'px');
+  document.documentElement.style.setProperty('--total-h', TOTAL_H);
   const f12 = localStorage.getItem('tzclock.fmt12');
   if (f12 !== null) setHour12(f12 === '1');
   document.documentElement.classList.toggle('compact-mode', compact);
   $('stage').classList.toggle('daynight-active', dayNight);
+  if (localStorage.getItem('tzclock.sideCollapsed') === '1') document.querySelector('.app').classList.add('side-collapsed');
   if (localStorage.getItem('tzclock.mtgOpen') === '0') $('toggleMeetings').closest('.meetings-card').classList.add('collapsed');
 
   initDaysOff();
@@ -85,7 +111,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(positionMarkers, 30000);
 
   render();
-  if (!userZoomed) fitZoom();           // by default, the whole day fits the screen
+  if (!userZoomed) fitZoom();           // by default, one day fits the screen
+  scrollToFocus();                      // ...centered on the focused day in the window
 });
 
 function save() {
@@ -150,10 +177,8 @@ function scopeMembers() {
 }
 function teamById(id) { return state.teams.find(t => t.id === id); }
 function hoursLabel(m) { return m.always ? 'Always available' : `${hourLabel(m.start)}–${hourLabel(m.end)}`; }
-function colorOf(member) {
-  const t = teamById(member.teamId);
-  return t ? TEAM_COLORS[t.color % TEAM_COLORS.length] : '#94a3b8';
-}
+function teamColor(t) { return t ? (t.customColor || TEAM_COLORS[t.color % TEAM_COLORS.length]) : '#94a3b8'; }
+function colorOf(member) { return teamColor(teamById(member.teamId)); }
 function pruneActiveTeams() {
   for (const id of [...activeTeams]) if (!teamById(id)) activeTeams.delete(id);
   for (const i of [...boardPeople]) if (!state.members[i]) boardPeople.delete(i);
@@ -171,7 +196,7 @@ function renderDateStrip() {
       <span class="dc-dow">${dt.toFormat('ccc')}</span><span class="dc-day">${dt.toFormat('dd')}</span><span class="dc-mon">${dt.toFormat('LLL')}</span>${today ? '<span class="dc-dot">●</span>' : ''}</button>`;
   }
   box.innerHTML = html;
-  box.querySelectorAll('.day-cell').forEach(b => b.addEventListener('click', () => { refDate = b.dataset.iso; render(); }));
+  box.querySelectorAll('.day-cell').forEach(b => b.addEventListener('click', () => { refDate = b.dataset.iso; render(); scrollToFocus(); }));
   const sel = box.querySelector('.day-cell.sel');
   if (sel) requestAnimationFrame(() => sel.scrollIntoView({ inline: 'center', block: 'nearest' }));
 }
@@ -183,7 +208,7 @@ function renderTeamFilter() {
     `<button class="tf-chip ${dot ? 'person-chip' : ''} ${on ? 'active' : ''}" data-${attr}="${val}">${dot || ''}${esc(label)}</button>`;
   let html = chip('team', '__all', '🌐 Everyone', !boardCustom && activeTeams.size === 0, '');
   for (const t of state.teams) {
-    const dot = `<span class="dot" style="background:${TEAM_COLORS[t.color % TEAM_COLORS.length]}"></span>`;
+    const dot = `<span class="dot" style="background:${teamColor(t)}"></span>`;
     html += chip('team', t.id, t.name, !boardCustom && activeTeams.has(t.id), dot);
   }
   html += chip('team', '__custom', '⭐ Custom', boardCustom, '');
@@ -213,10 +238,15 @@ function renderTeamFilter() {
 function renderAxis() {
   const track = $('axisTrack');
   track.innerHTML = '';
-  for (let h = 0; h < 24; h++) {
+  for (let g = 0; g < TOTAL_H; g++) {
+    const dayIdx = Math.floor(g / 24), h = g % 24;
     const cell = document.createElement('div');
-    cell.className = 'tick' + (h === 0 ? ' daybreak' : '');
-    cell.innerHTML = `<span>${HOUR_12 ? hourLabel(h) : String(h).padStart(2, '0')}</span>`;
+    cell.className = 'tick' + (h === 0 ? ' daybreak' : '') + (dayIdx === CENTER_DAY ? ' focus-day' : '');
+    // At each midnight, label the day instead of "00" so boundaries read clearly.
+    const label = h === 0
+      ? DateTime.fromISO(winDayISO(dayIdx)).toFormat('ccc d')
+      : (HOUR_12 ? hourLabel(h) : String(h).padStart(2, '0'));
+    cell.innerHTML = `<span>${label}</span>`;
     track.appendChild(cell);
   }
 }
@@ -229,8 +259,8 @@ function utcOffsetLabel(tz, iso) {
   return `UTC${sign}${h}${m ? ':' + pad2(m) : ''}`;
 }
 // The member's local clock hour at a given axis hour (for the day/night ramp).
-function localHourAtAxis(axisH, m) {
-  const inst = axisInstant(axisH, refDate, homeTz).setZone(m.tz);
+function localHourAtAxis(axisH, m, iso = refDate) {
+  const inst = axisInstant(axisH, iso, homeTz).setZone(m.tz);
   return inst.hour + inst.minute / 60;
 }
 // Day/night colour palettes — pick one from settings.
@@ -286,7 +316,7 @@ const DN_PALETTES = [
 ];
 
 // The active palette's gradient stops (Soft Gray is the default = index 1).
-function dnKeys() { return (DN_PALETTES[dayNightPalette] || DN_PALETTES[1]).keys; }
+function dnKeys() { return DN_PALETTES[1].keys; }   // Soft Gray — the central day/night ramp
 function dnColor(h) {
   const keys = dnKeys();
   h = mod24(h);
@@ -302,7 +332,10 @@ function dnColor(h) {
 }
 function dayNightGradient(m) {
   const stops = [];
-  for (let i = 0; i <= 24; i++) stops.push(`${dnColor(localHourAtAxis(i, m))} ${(i / 24 * 100).toFixed(2)}%`);
+  for (let g = 0; g <= TOTAL_H; g++) {
+    const d = Math.min(WIN_DAYS - 1, Math.floor(g / 24)), h = g - d * 24;
+    stops.push(`${dnColor(localHourAtAxis(h, m, winDayISO(d)))} ${(g / TOTAL_H * 100).toFixed(2)}%`);
+  }
   return `linear-gradient(to right, ${stops.join(',')})`;
 }
 
@@ -324,23 +357,27 @@ function renderLanes() {
     row.className = 'tl-row lane' + (off ? ' off' : '') + (isPov ? ' pov' : '');
     row.dataset.gi = gi;
 
-    const bands = showBands
-      ? bandToAxisIntervals(m, refDate, homeTz)
-        .map(iv => `<div class="band" style="left:${iv.start / 24 * 100}%;width:${(iv.end - iv.start) / 24 * 100}%;--bc:${colorOf(m)}"></div>`)
-        .join('')
-      : '';
+    let bands = '';
+    if (showBands) {
+      for (let d = 0; d < WIN_DAYS; d++) {
+        const iso = winDayISO(d);
+        bands += bandToAxisIntervals(m, iso, homeTz)
+          .map(iv => `<div class="band" style="left:${gHour(d, iv.start) / TOTAL_H * 100}%;width:${(iv.end - iv.start) / TOTAL_H * 100}%;--bc:${colorOf(m)}"></div>`)
+          .join('');
+      }
+    }
 
     let dn = '', trackStyle = '';
     if (dayNight) {
       trackStyle = ` style="background:${dayNightGradient(m)}"`;
-      const noon = memberHourToAxis(12, m.tz, refDate, homeTz);
-      const mid = memberHourToAxis(0, m.tz, refDate, homeTz);
-      const sunrise = memberHourToAxis(6, m.tz, refDate, homeTz);
-      const sunset = memberHourToAxis(18, m.tz, refDate, homeTz);
-      dn = `<span class="celestial sun" style="left:${noon / 24 * 100}%" title="Their midday ☀">☀️</span>
-            <span class="celestial moon" style="left:${mid / 24 * 100}%" title="Their midnight ☾">☾</span>
-            <span class="celestial dawn" style="left:${sunrise / 24 * 100}%" title="Their sunrise">⬆</span>
-            <span class="celestial dusk" style="left:${sunset / 24 * 100}%" title="Their sunset">⬇</span>`;
+      for (let d = 0; d < WIN_DAYS; d++) {
+        const iso = winDayISO(d);
+        const pos = (mh) => gHour(d, memberHourToAxis(mh, m.tz, iso, homeTz)) / TOTAL_H * 100;
+        dn += `<span class="celestial sun" style="left:${pos(12)}%" title="Their midday ☀">☀️</span>
+            <span class="celestial moon" style="left:${pos(0)}%" title="Their midnight ☾">☾</span>
+            <span class="celestial dawn" style="left:${pos(6)}%" title="Their sunrise">⬆</span>
+            <span class="celestial dusk" style="left:${pos(18)}%" title="Their sunset">⬇</span>`;
+      }
     }
 
     const expandIcon = isExpanded ? '▾' : '▸';
@@ -383,14 +420,17 @@ function renderLanes() {
   }));
 }
 
-function xForHour(h) { return LW() + h * HW(); }
+function xForHour(g) { return LW() + g * HW(); }      // g = global window hour (0..TOTAL_H)
+function scrubGlobal() { return gHour(CENTER_DAY, scrubHour); }   // pinned scrubber's global hour
+function daysBetween(a, b) { return Math.round(DateTime.fromISO(b).diff(DateTime.fromISO(a), 'days').days); }
+function scrollToFocus() { $('board').scrollLeft = CENTER_DAY * 24 * HW(); }   // bring the focused day into view
 
-// Pointer x (client coords) → axis hour, or null if over the sticky name column.
+// Pointer x (client coords) → global window hour, or null if over the name column.
 function hourFromClientX(clientX) {
   const r = $('boardInner').getBoundingClientRect();
   const x = clientX - r.left - LW();
   if (x < 0) return null;
-  return Math.min(24, Math.max(0, x / HW()));
+  return Math.min(TOTAL_H, Math.max(0, x / HW()));
 }
 
 // Hover to read every zone's time; click to pin; double-click to block; wheel
@@ -412,30 +452,30 @@ function bindBoard() {
 
   inner.addEventListener('pointermove', e => {
     if (e.target.closest('.tl-label')) return;
-    const h = hourFromClientX(e.clientX);
-    if (h == null) return;
-    placeScrub(h); updateScrub(h); showTip(h);
+    const g = hourFromClientX(e.clientX);
+    if (g == null) return;
+    placeScrub(g); updateScrub(g); showTip(g);
   });
-  inner.addEventListener('pointerleave', () => { placeScrub(scrubHour); updateScrub(scrubHour); hideTip(); });
+  inner.addEventListener('pointerleave', () => { placeScrub(scrubGlobal()); updateScrub(); hideTip(); });
   inner.addEventListener('pointerdown', e => { if (!e.target.closest('.tl-label')) downX = e.clientX; });
   inner.addEventListener('pointerup', e => {
     if (e.target.closest('.tl-label')) return;
-    const h = hourFromClientX(e.clientX);
-    if (h != null) { scrubHour = h; placeScrub(h); updateScrub(h); }
+    const g = hourFromClientX(e.clientX);
+    if (g != null) pinScrub(g);
     downX = null;
   });
 
   inner.addEventListener('dblclick', e => {
     if (e.target.closest('.tl-label')) return;
-    const h = hourFromClientX(e.clientX);
-    if (h == null) return;
+    const g = hourFromClientX(e.clientX);
+    if (g == null) return;
     const scope = currentScopeWorking();
-    openMeetingDialog({ start: Math.round(h * 2) / 2, attendees: scope.map(m => m.name) });
+    openMeetingDialog({ date: winDayISO(gToDay(g)), start: Math.round((g % 24) * 2) / 2, attendees: scope.map(m => m.name) });
   });
 
   $('scrubber').addEventListener('keydown', e => {
-    if (e.key === 'ArrowRight') { scrubHour = mod24(scrubHour + 0.25); placeScrub(scrubHour); updateScrub(scrubHour); }
-    if (e.key === 'ArrowLeft') { scrubHour = mod24(scrubHour - 0.25); placeScrub(scrubHour); updateScrub(scrubHour); }
+    if (e.key === 'ArrowRight') { scrubHour = mod24(scrubHour + 0.25); placeScrub(scrubGlobal()); updateScrub(); }
+    if (e.key === 'ArrowLeft') { scrubHour = mod24(scrubHour - 0.25); placeScrub(scrubGlobal()); updateScrub(); }
   });
 
   // Edge spill-over: keep scrolling past the end of the day to roll into the next.
@@ -454,51 +494,61 @@ function bindBoard() {
 function rollDay(dir) {
   refDate = shiftISO(refDate, dir);
   render();
-  // land at the matching edge so the motion feels continuous
-  const board = $('board');
-  board.scrollLeft = dir > 0 ? 0 : board.scrollWidth;
+  scrollToFocus();        // keep the focused day centered as the window slides
 }
 
-function placeScrub(h) { $('scrubber').style.left = xForHour(h) + 'px'; }
-function showTip(h) { const t = $('hoverTip'); t.hidden = false; t.textContent = hourLabel(h); t.style.left = xForHour(h) + 'px'; }
+// Pin the scrubber at global hour g. Clicking into a neighbour day promotes it to
+// the focused day (so the planner, blocks and "now" follow you across days).
+function pinScrub(g) {
+  const dayIdx = gToDay(g);
+  scrubHour = g % 24;
+  if (dayIdx !== CENTER_DAY) { refDate = winDayISO(dayIdx); render(); scrollToFocus(); }
+  else { placeScrub(scrubGlobal()); updateScrub(); }
+}
+
+function placeScrub(g) { $('scrubber').style.left = xForHour(g) + 'px'; }
+function showTip(g) { const t = $('hoverTip'); t.hidden = false; t.textContent = hourLabel(g % 24); t.style.left = xForHour(g) + 'px'; }
 function hideTip() { $('hoverTip').hidden = true; }
 
 function positionMarkers() {
   const now = $('nowMarker');
-  if (isTodayISO(refDate, homeTz)) { now.style.display = ''; now.style.left = xForHour(nowAxisHour(homeTz)) + 'px'; }
+  const dayIdx = CENTER_DAY + daysBetween(refDate, todayISO(homeTz));
+  if (dayIdx >= 0 && dayIdx < WIN_DAYS) { now.style.display = ''; now.style.left = xForHour(gHour(dayIdx, nowAxisHour(homeTz))) + 'px'; }
   else now.style.display = 'none';
-  placeScrub(scrubHour);
+  placeScrub(scrubGlobal());
   renderBlocks();
 }
 
-// Translucent spans on the timeline for meetings on the selected date.
+// Translucent spans for meetings anywhere in the visible window.
 function renderBlocks() {
   const inner = $('boardInner');
   inner.querySelectorAll('.block-span').forEach(e => e.remove());
   const hw = HW(), lw = LW();
   for (const m of meetings) {
     const dt = DateTime.fromISO(m.startUTC).setZone(homeTz);
-    if (dt.toISODate() !== refDate) continue;
-    const startAxis = dt.hour + dt.minute / 60;
+    const dayIdx = CENTER_DAY + daysBetween(refDate, dt.toISODate());
+    if (dayIdx < 0 || dayIdx >= WIN_DAYS) continue;
+    const g = gHour(dayIdx, dt.hour + dt.minute / 60);
     const el = document.createElement('div');
     el.className = 'block-span';
-    el.style.left = (lw + startAxis * hw) + 'px';
+    el.style.left = (lw + g * hw) + 'px';
     el.style.width = (m.durationMin / 60 * hw) + 'px';
     el.innerHTML = `<span>${esc(m.title)}</span>`;
     inner.appendChild(el);
   }
 }
 
-function updateScrub(h = scrubHour) {
-  const dateStr = DateTime.fromISO(refDate).toFormat('ccc dd LLL');
+function updateScrub(g = scrubGlobal()) {
+  const dayIdx = gToDay(g), hourWithin = g % 24, dayISO = winDayISO(dayIdx);
+  const dateStr = DateTime.fromISO(dayISO).toFormat('ccc dd LLL');
   const povLabel = povPerson >= 0 && state.members[povPerson]
     ? esc(state.members[povPerson].name) + "'s view"
     : esc(labelForTz(homeTz));
-  $('scrubReadout').innerHTML = `<b>${esc(dateStr)}</b> · ${hourLabel(h)} · ${povLabel}`;
+  $('scrubReadout').innerHTML = `<b>${esc(dateStr)}</b> · ${hourLabel(hourWithin)} · ${povLabel}`;
   for (const { m, gi } of visibleEntries()) {
     const el = $('live-' + gi);
     if (!el) continue;
-    const { label, working } = localAt(h, m, refDate, homeTz);
+    const { label, working } = localAt(hourWithin, m, dayISO, homeTz);
     el.textContent = label;
     el.classList.toggle('working', working);
   }
@@ -519,7 +569,7 @@ function renderRoster() {
     const grp = document.createElement('div');
     grp.className = 'team-group';
     grp.dataset.team = g.id;
-    const swatch = g.color >= 0 ? `<span class="dot" style="background:${TEAM_COLORS[g.color % TEAM_COLORS.length]}"></span>` : '';
+    const swatch = g.color >= 0 ? `<span class="dot" style="background:${teamColor(teamById(g.id))}"></span>` : '';
     grp.innerHTML = `<div class="group-head">${swatch}${esc(g.name)} <span class="count">${members.length}</span></div>
       <div class="chips">${members.map(({ m, gi }) => personChip(m, gi)).join('') || '<span class="muted small">drop here</span>'}</div>`;
     box.appendChild(grp);
@@ -772,10 +822,10 @@ function makeCombo(input, list, onPick) {
 function bindControls() {
   $('org').addEventListener('input', e => { state.org = e.target.value; save(); });
 
-  $('prevDay').addEventListener('click', () => { refDate = shiftISO(refDate, -1); render(); });
-  $('nextDay').addEventListener('click', () => { refDate = shiftISO(refDate, +1); render(); });
-  $('todayBtn').addEventListener('click', () => { refDate = todayISO(homeTz); render(); });
-  $('datePick').addEventListener('change', e => { if (e.target.value) { refDate = e.target.value; render(); } });
+  $('prevDay').addEventListener('click', () => { refDate = shiftISO(refDate, -1); render(); scrollToFocus(); });
+  $('nextDay').addEventListener('click', () => { refDate = shiftISO(refDate, +1); render(); scrollToFocus(); });
+  $('todayBtn').addEventListener('click', () => { refDate = todayISO(homeTz); render(); scrollToFocus(); });
+  $('datePick').addEventListener('change', e => { if (e.target.value) { refDate = e.target.value; render(); scrollToFocus(); } });
   $('dsPrev').addEventListener('click', () => { $('dateStrip').scrollBy({ left: -200, behavior: 'smooth' }); });
   $('dsNext').addEventListener('click', () => { $('dateStrip').scrollBy({ left: 200, behavior: 'smooth' }); });
 
@@ -790,11 +840,6 @@ function bindControls() {
     dayNight = !dayNight; localStorage.setItem('tzclock.daynight', dayNight ? '1' : '0');
     $('stage').classList.toggle('daynight-active', dayNight);
     toggleSync('dayNightBtn', dayNight); renderLanes(); positionMarkers(); updateScrub(); renderPlanner();
-  });
-  $('paletteSelect').addEventListener('change', e => {
-    dayNightPalette = +e.target.value;
-    localStorage.setItem('tzclock.palette', String(dayNightPalette));
-    if (dayNight) { renderLanes(); positionMarkers(); updateScrub(); }
   });
   $('compactBtn').addEventListener('click', () => {
     compact = !compact; localStorage.setItem('tzclock.compact', compact ? '1' : '0');
@@ -853,6 +898,12 @@ function bindControls() {
     localStorage.setItem('tzclock.mtgOpen', card.classList.contains('collapsed') ? '0' : '1');
   });
 
+  $('sideToggle').addEventListener('click', () => {
+    const collapsed = document.querySelector('.app').classList.toggle('side-collapsed');
+    localStorage.setItem('tzclock.sideCollapsed', collapsed ? '1' : '0');
+    if (!userZoomed) fitZoom(); else positionMarkers();
+  });
+
   $('shareBtn').addEventListener('click', share);
 }
 
@@ -861,9 +912,10 @@ function fitZoom() {
   const board = $('board');
   const avail = board.clientWidth - LW() - 2;
   if (avail <= 0) return;
-  zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.floor(avail / 24)));
+  zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.floor(avail / 24)));   // one day to the screen
   document.documentElement.style.setProperty('--hour-w', zoom + 'px');
   positionMarkers();
+  scrollToFocus();
 }
 function setZoom(z) {
   userZoomed = true;
@@ -872,6 +924,7 @@ function setZoom(z) {
   localStorage.setItem('tzclock.zoom', zoom);
   localStorage.setItem('tzclock.userZoom', '1');
   positionMarkers();
+  scrollToFocus();
 }
 function openDrawer() { $('scrim').hidden = false; $('drawer').hidden = false; }
 function closeDrawer() { $('scrim').hidden = true; $('drawer').hidden = true; resetForm(); }
@@ -886,10 +939,11 @@ function renderTeamList() {
   if (state.teams.length === 0) { ul.innerHTML = '<li class="muted small">No teams yet.</li>'; return; }
   ul.innerHTML = state.teams.map(t => {
     const count = state.members.filter(m => m.teamId === t.id).length;
-    return `<li><span class="dot" style="background:${TEAM_COLORS[t.color % TEAM_COLORS.length]}"></span>
+    return `<li><button class="dot dot-btn" style="background:${teamColor(t)}" data-colorteam="${t.id}" title="Change colour" aria-label="Change ${esc(t.name)} colour"></button>
       <span class="tname">${esc(t.name)}</span><span class="muted small">${count}</span>
       <button class="icon" data-delteam="${t.id}" title="Delete team">🗑️</button></li>`;
   }).join('');
+  ul.querySelectorAll('[data-colorteam]').forEach(b => b.addEventListener('click', e => openColorPicker(b.dataset.colorteam, b)));
   ul.querySelectorAll('[data-delteam]').forEach(b => b.addEventListener('click', () => {
     const id = b.dataset.delteam;
     const t = teamById(id);
@@ -901,6 +955,37 @@ function renderTeamList() {
     activeTeams.delete(id);
     render();
   }));
+}
+
+// ── team colour picker (palette swatches + custom) ─────────────────────────────
+let _colorPop = null;
+function closeColorPicker() {
+  if (_colorPop) { _colorPop.remove(); _colorPop = null; document.removeEventListener('mousedown', _cpOutside, true); }
+}
+function _cpOutside(e) {
+  if (!e.target.closest('.color-pop') && !e.target.closest('[data-colorteam]')) closeColorPicker();
+}
+function openColorPicker(teamId, anchor) {
+  closeColorPicker();
+  const t = teamById(teamId); if (!t) return;
+  const pop = document.createElement('div');
+  pop.className = 'color-pop';
+  const swatches = TEAM_COLORS.map((c, i) =>
+    `<button class="cp-swatch ${!t.customColor && t.color === i ? 'sel' : ''}" style="background:${c}" data-ci="${i}" title="Colour ${i + 1}"></button>`).join('');
+  pop.innerHTML = `<div class="cp-grid">${swatches}</div>
+    <label class="cp-custom">Custom <input type="color" value="${teamColor(t)}" aria-label="Custom team colour" /></label>`;
+  document.body.appendChild(pop);
+  _colorPop = pop;
+  const r = anchor.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
+  pop.style.top = (r.bottom + 6) + 'px';
+  pop.querySelectorAll('[data-ci]').forEach(b => b.addEventListener('click', () => {
+    t.color = +b.dataset.ci; delete t.customColor; closeColorPicker(); render();
+  }));
+  const inp = pop.querySelector('input[type=color]');
+  inp.addEventListener('input', e => { t.customColor = e.target.value; render(); });   // live preview
+  inp.addEventListener('change', () => { closeColorPicker(); render(); });
+  setTimeout(() => document.addEventListener('mousedown', _cpOutside, true), 0);
 }
 
 function onSubmitMember(e) {

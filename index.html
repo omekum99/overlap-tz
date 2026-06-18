@@ -22,6 +22,7 @@
       </div>
     </div>
     <div class="topbar-right">
+      <button id="sideToggle" class="btn ghost icon-btn" title="Show/hide the team panel" aria-label="Toggle side panel">⇥</button>
       <span id="urlBadge" class="url-badge" title="Length of the shareable URL. Stay under ~2000 chars."></span>
       <button id="shareBtn" class="btn primary">Share link</button>
     </div>
@@ -48,18 +49,12 @@
           <button id="settingsBtn" class="btn ghost icon-btn" title="Settings">⚙️</button>
           <div id="settingsPanel" class="settings-panel" hidden>
             <div class="sp-section">
-              <span class="sp-label">View</span>
-              <div class="sp-row toggles">
-                <button id="bandsBtn" class="toggle-btn active" title="Show working-hour bands">▤ Bands</button>
-                <button id="dayNightBtn" class="toggle-btn" title="Show day/night gradient">☀🌙 Day</button>
-                <button id="compactBtn" class="toggle-btn" title="Compact rows">≡ Compact</button>
-                <button id="fmt12Btn" class="toggle-btn" title="12-hour clock">12h</button>
-              </div>
-            </div>
-            <div class="sp-section" id="paletteSection">
-              <span class="sp-label">Day/night palette</span>
-              <div class="sp-row">
-                <select id="paletteSelect" class="mini-select" aria-label="Day/night colour palette"></select>
+              <span class="sp-label">Layers</span>
+              <div class="layer-list">
+                <button id="bandsBtn" class="layer-toggle" title="Show working-hour bands"><span>Working hours</span><span class="sw"></span></button>
+                <button id="dayNightBtn" class="layer-toggle" title="Show day/night sky gradient"><span>Day / night sky</span><span class="sw"></span></button>
+                <button id="compactBtn" class="layer-toggle" title="Denser rows"><span>Compact rows</span><span class="sw"></span></button>
+                <button id="fmt12Btn" class="layer-toggle" title="12-hour clock"><span>12-hour clock</span><span class="sw"></span></button>
               </div>
             </div>
             <div class="sp-section">
