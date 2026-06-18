@@ -379,6 +379,14 @@ function renderLanes() {
           .join('');
       }
     }
+    // Drag handles on the focused day's band edges → resize working hours directly.
+    let handles = '';
+    if (showBands && !m.always) {
+      const sa = memberHourToAxis(m.start, m.tz, refDate, homeTz);
+      const ea = memberHourToAxis(m.end, m.tz, refDate, homeTz);
+      handles = `<div class="band-handle" data-gi="${gi}" data-edge="start" style="left:${gHour(CENTER_DAY, sa) / TOTAL_H * 100}%" title="Drag to change start"></div>
+        <div class="band-handle" data-gi="${gi}" data-edge="end" style="left:${gHour(CENTER_DAY, ea) / TOTAL_H * 100}%" title="Drag to change end"></div>`;
+    }
 
     let dn = '', trackStyle = '';
     if (dayNight) {
@@ -405,7 +413,7 @@ function renderLanes() {
         </div>
         <button class="lane-tz ${gi === povPerson ? 'active' : ''}" data-ltz="${esc(m.tz)}" data-gi="${gi}" title="${gi === povPerson ? esc(m.name) + "'s view — click to reset" : 'View board from ' + esc(m.name) + "'s perspective"}">⌖</button>
       </div>
-      <div class="tl-track work${dayNight ? ' dn' : ''}"${trackStyle}>${dn}${bands}</div>`;
+      <div class="tl-track work${dayNight ? ' dn' : ''}"${trackStyle}>${dn}${bands}${handles}</div>`;
     wrap.appendChild(row);
 
     if (isExpanded) {
@@ -431,6 +439,41 @@ function renderLanes() {
     else { povPerson = gi; homeTz = b.dataset.ltz; localStorage.setItem('tzclock.home', homeTz); }
     render();
   }));
+}
+
+// Axis hour on the focused day → that member's local clock hour (snapped to 30m).
+function axisToMemberLocal(axisHour, m) {
+  const inst = axisInstant(axisHour, refDate, homeTz).setZone(m.tz);
+  return Math.round((inst.hour + inst.minute / 60) * 2) / 2;
+}
+// Drag a band edge to reshape working hours. Listens on document (not the handle)
+// so live re-renders that recreate the handle don't break the drag.
+let draggingBand = false;
+function startBandDrag(e, gi, edge) {
+  const m = state.members[gi];
+  if (!m) return;
+  draggingBand = true;
+  document.body.style.cursor = 'ew-resize';
+  let raf = null;
+  const move = ev => {
+    const g = hourFromClientX(ev.clientX);
+    if (g == null) return;
+    const axisHour = Math.max(0, Math.min(24, g - CENTER_DAY * 24));   // clamp to the focused day
+    let v = axisToMemberLocal(axisHour, m);
+    const other = edge === 'start' ? m.end : m.start;
+    if (v === other) v = mod24(v + (edge === 'start' ? -0.5 : 0.5));    // never zero-width
+    m[edge] = mod24(v);
+    if (!raf) raf = requestAnimationFrame(() => { raf = null; renderLanes(); positionMarkers(); updateScrub(); });
+  };
+  const up = () => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    draggingBand = false;
+    document.body.style.cursor = '';
+    render(); save();
+  };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
 }
 
 function xForHour(g) { return LW() + g * HW(); }      // g = global window hour (0..TOTAL_H)
@@ -464,22 +507,26 @@ function bindBoard() {
   });
 
   inner.addEventListener('pointermove', e => {
-    if (e.target.closest('.tl-label')) return;
+    if (draggingBand || e.target.closest('.tl-label')) return;
     const g = hourFromClientX(e.clientX);
     if (g == null) return;
     placeScrub(g); updateScrub(g); showTip(g);
   });
-  inner.addEventListener('pointerleave', () => { placeScrub(scrubGlobal()); updateScrub(); hideTip(); });
-  inner.addEventListener('pointerdown', e => { if (!e.target.closest('.tl-label')) downX = e.clientX; });
+  inner.addEventListener('pointerleave', () => { if (draggingBand) return; placeScrub(scrubGlobal()); updateScrub(); hideTip(); });
+  inner.addEventListener('pointerdown', e => {
+    const handle = e.target.closest('.band-handle');
+    if (handle) { e.preventDefault(); e.stopPropagation(); startBandDrag(e, +handle.dataset.gi, handle.dataset.edge); return; }
+    if (!e.target.closest('.tl-label')) downX = e.clientX;
+  });
   inner.addEventListener('pointerup', e => {
-    if (e.target.closest('.tl-label')) return;
+    if (draggingBand || e.target.closest('.tl-label') || e.target.closest('.band-handle')) return;
     const g = hourFromClientX(e.clientX);
     if (g != null) pinScrub(g);
     downX = null;
   });
 
   inner.addEventListener('dblclick', e => {
-    if (e.target.closest('.tl-label')) return;
+    if (e.target.closest('.tl-label') || e.target.closest('.band-handle')) return;
     const g = hourFromClientX(e.clientX);
     if (g == null) return;
     const scope = currentScopeWorking();

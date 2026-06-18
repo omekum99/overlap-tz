@@ -270,6 +270,12 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 @media (max-width: 700px) { .add-row-hint { display: none; } }
 
 .band { position: absolute; top: 6px; bottom: 6px; background: var(--bc, var(--band)); opacity: .92; }
+/* drag handles to resize working hours on the focused day */
+.band-handle { position: absolute; top: 3px; bottom: 3px; width: 10px; margin-left: -5px; cursor: ew-resize;
+  z-index: 3; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .12s; }
+.band-handle::after { content: ''; width: 3px; height: 60%; background: var(--text); border: 1px solid var(--bg); border-radius: 2px; }
+.lane:hover .band-handle { opacity: .65; }
+.band-handle:hover { opacity: 1; }
 .lane.off .band { opacity: .25; }
 .lane.off .tl-track.work { background-color: color-mix(in srgb, var(--muted) 8%, transparent); }
 
