@@ -31,6 +31,15 @@ function hslToHex(h, s, l) {
 }
 const TEAM_HUES = [212, 28, 150, 330, 265, 45, 122, 352, 190, 88, 300, 14];
 const TEAM_COLORS = TEAM_HUES.map(h => hslToHex(h, 62, 52));
+const DEFAULT_ACCENT = '#5f7d63';
+
+// The app's central accent colour. accent-soft is derived so the whole UI stays
+// coherent when you change it from Settings → Colours.
+function applyAccent(color) {
+  const root = document.documentElement.style;
+  root.setProperty('--accent', color);
+  root.setProperty('--accent-soft', `color-mix(in srgb, ${color} 16%, var(--bg))`);
+}
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];   // Mon=1 .. Sun=7
 const SAFE_URL_LEN = 1800;
 const ZOOM_MIN = 30, ZOOM_MAX = 120;
@@ -88,6 +97,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.documentElement.style.setProperty('--hour-w', zoom + 'px');
   document.documentElement.style.setProperty('--total-h', TOTAL_H);
+  const savedAccent = localStorage.getItem('tzclock.accent');
+  if (savedAccent) applyAccent(savedAccent);
+  $('accentPick').value = savedAccent || DEFAULT_ACCENT;
   const f12 = localStorage.getItem('tzclock.fmt12');
   if (f12 !== null) setHour12(f12 === '1');
   document.documentElement.classList.toggle('compact-mode', compact);
@@ -145,6 +157,7 @@ function render() {
   renderTeamFilter();
   renderTeamSelect();
   renderTeamList();
+  renderSettingsColors();
   renderAxis();
   renderLanes();
   renderRoster();
@@ -871,7 +884,7 @@ function bindControls() {
   const settingsPanel = $('settingsPanel');
   if (settingsBtn && settingsPanel) {
     settingsBtn.addEventListener('click', () => { settingsPanel.hidden = !settingsPanel.hidden; });
-    document.addEventListener('click', e => { if (!settingsPanel.hidden && !e.target.closest('.settings-wrap')) settingsPanel.hidden = true; });
+    document.addEventListener('click', e => { if (!settingsPanel.hidden && !e.target.closest('.settings-wrap') && !e.target.closest('.color-pop')) settingsPanel.hidden = true; });
   }
   $('search').addEventListener('input', e => { search = e.target.value; renderLanes(); renderRoster(); updateScrub(); });
   $('duration').addEventListener('change', renderPlanner);
@@ -912,6 +925,12 @@ function bindControls() {
     const card = $('toggleMeetings').closest('.meetings-card');
     card.classList.toggle('collapsed');
     localStorage.setItem('tzclock.mtgOpen', card.classList.contains('collapsed') ? '0' : '1');
+  });
+
+  $('accentPick').addEventListener('input', e => { applyAccent(e.target.value); localStorage.setItem('tzclock.accent', e.target.value); });
+  $('resetColors').addEventListener('click', () => {
+    state.teams.forEach((t, i) => { t.color = i % TEAM_COLORS.length; delete t.customColor; });
+    render();
   });
 
   $('sideToggle').addEventListener('click', () => {
@@ -971,6 +990,16 @@ function renderTeamList() {
     activeTeams.delete(id);
     render();
   }));
+}
+
+// Central colour management in Settings → Colours: every team's swatch in one place.
+function renderSettingsColors() {
+  const box = $('settingsTeamColors');
+  if (!box) return;
+  if (state.teams.length === 0) { box.innerHTML = '<span class="muted small">No teams yet.</span>'; return; }
+  box.innerHTML = state.teams.map(t =>
+    `<div class="sp-tc-row"><button class="dot dot-btn" style="background:${teamColor(t)}" data-colorteam="${t.id}" aria-label="${esc(t.name)} colour"></button>${esc(t.name)}</div>`).join('');
+  box.querySelectorAll('[data-colorteam]').forEach(b => b.addEventListener('click', () => openColorPicker(b.dataset.colorteam, b)));
 }
 
 // ── team colour picker (palette swatches + custom) ─────────────────────────────

@@ -130,6 +130,13 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 .sp-row { display: flex; align-items: center; gap: .35rem; }
 .sp-row.toggles { flex-wrap: wrap; }
 
+/* settings → Colours */
+.sp-color-row { display: flex; align-items: center; justify-content: space-between; font-size: .8rem; color: var(--text); }
+.sp-color-row input[type=color] { width: 30px; height: 20px; padding: 0; border: 1px solid var(--line-strong); cursor: pointer; background: none; }
+.sp-team-colors { display: flex; flex-direction: column; gap: .25rem; }
+.sp-tc-row { display: flex; align-items: center; gap: .45rem; font-size: .76rem; color: var(--text); }
+.sp-tc-row .dot-btn { width: 16px; height: 16px; flex: none; }
+
 /* layers — a clean list of on/off switches */
 .layer-list { display: flex; flex-direction: column; }
 .layer-toggle { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
