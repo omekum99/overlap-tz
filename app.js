@@ -69,6 +69,7 @@ let showBands = localStorage.getItem('tzclock.bands') !== '0';    // working-hou
 let dayNight = localStorage.getItem('tzclock.daynight') === '1';   // day/night gradient view
 let compact = localStorage.getItem('tzclock.compact') === '1';     // dense rows
 let expandedPeople = new Set();                                    // per-person expanded lanes
+let selectedPeople = new Set();                                    // roster multi-select (member indices)
 let povPerson = -1;                                                // person whose POV is shown (-1 = device tz)
 let search = '';
 let userZoomed = localStorage.getItem('tzclock.userZoom') === '1';
@@ -111,6 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
   bindControls();
   bindBoard();
   bindMeetingDialog();
+  bindBulkAdd();
   setupComboboxes();
 
   window.addEventListener('hashchange', () => {
@@ -157,7 +159,6 @@ function render() {
   renderTeamFilter();
   renderTeamSelect();
   renderTeamList();
-  renderSettingsColors();
   renderAxis();
   renderLanes();
   renderRoster();
@@ -250,18 +251,20 @@ function renderTeamFilter() {
 // ── timeline ───────────────────────────────────────────────────────────────
 function renderAxis() {
   const track = $('axisTrack');
-  track.innerHTML = '';
+  let html = '';
+  // Day headers as a strip on top — one per day, spanning its width, so the date
+  // never collides with the hour numbers.
+  for (let d = 0; d < WIN_DAYS; d++) {
+    const sel = d === CENTER_DAY;
+    html += `<div class="axis-day${sel ? ' sel' : ''}" style="left:${gHour(d, 0) / TOTAL_H * 100}%;width:${24 / TOTAL_H * 100}%">${DateTime.fromISO(winDayISO(d)).toFormat('ccc d LLL')}</div>`;
+  }
+  // Hour ticks below, hours only.
   for (let g = 0; g < TOTAL_H; g++) {
     const dayIdx = Math.floor(g / 24), h = g % 24;
-    const cell = document.createElement('div');
-    cell.className = 'tick' + (h === 0 ? ' daybreak' : '') + (dayIdx === CENTER_DAY ? ' focus-day' : '');
-    // At each midnight, label the day instead of "00" so boundaries read clearly.
-    const label = h === 0
-      ? DateTime.fromISO(winDayISO(dayIdx)).toFormat('ccc d')
-      : (HOUR_12 ? hourLabel(h) : String(h).padStart(2, '0'));
-    cell.innerHTML = `<span>${label}</span>`;
-    track.appendChild(cell);
+    const cls = 'tick' + (h === 0 ? ' daybreak' : '') + (dayIdx === CENTER_DAY ? ' focus-day' : '');
+    html += `<div class="${cls}"><span>${HOUR_12 ? hourLabel(h) : String(h).padStart(2, '0')}</span></div>`;
   }
+  track.innerHTML = html;
 }
 
 // Their UTC offset on the selected date, e.g. "UTC+5:30" / "UTC−4".
@@ -638,8 +641,16 @@ function renderRoster() {
   box.querySelectorAll('.person').forEach(chip => {
     chip.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', chip.dataset.gi); chip.classList.add('dragging'); });
     chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
-    chip.addEventListener('click', () => { startEdit(+chip.dataset.gi); openDrawer(); });
+    chip.addEventListener('click', e => { if (e.target.closest('.person-check')) return; startEdit(+chip.dataset.gi); openDrawer(); });
   });
+  box.querySelectorAll('.person-check').forEach(cb => cb.addEventListener('click', e => {
+    e.stopPropagation();
+    const gi = +cb.dataset.gi;
+    cb.checked ? selectedPeople.add(gi) : selectedPeople.delete(gi);
+    cb.closest('.person').classList.toggle('selected', cb.checked);
+    renderSelectBar();
+  }));
+  renderSelectBar();
   box.querySelectorAll('.team-group').forEach(grp => {
     grp.addEventListener('dragover', e => { e.preventDefault(); grp.classList.add('drop'); });
     grp.addEventListener('dragleave', () => grp.classList.remove('drop'));
@@ -653,9 +664,33 @@ function renderRoster() {
 
 function personChip(m, gi) {
   const initials = m.name.trim().slice(0, 1).toUpperCase() || '?';
-  return `<span class="person" draggable="true" data-gi="${gi}" title="Drag to a team · click to edit">
+  const sel = selectedPeople.has(gi);
+  return `<span class="person${sel ? ' selected' : ''}" draggable="true" data-gi="${gi}" title="Click to edit · checkbox to select">
+    <input type="checkbox" class="person-check" data-gi="${gi}" ${sel ? 'checked' : ''} aria-label="Select ${esc(m.name)}" />
     <span class="avatar" style="background:${colorOf(m)}">${esc(initials)}</span>
     ${esc(m.name)} <span class="ptz">${esc(labelForTz(m.tz))}</span></span>`;
+}
+
+function renderSelectBar() {
+  const bar = $('selectBar');
+  for (const gi of [...selectedPeople]) if (!state.members[gi]) selectedPeople.delete(gi);
+  const n = selectedPeople.size;
+  bar.hidden = n === 0;
+  if (n === 0) { bar.innerHTML = ''; return; }
+  bar.innerHTML = `<span class="sel-count">${n} selected</span>
+    <button class="btn ghost sm danger" id="delSelected">🗑 Delete</button>
+    <button class="btn ghost sm" id="clearSelected">Clear</button>`;
+  $('delSelected').addEventListener('click', deleteSelected);
+  $('clearSelected').addEventListener('click', () => { selectedPeople.clear(); renderRoster(); });
+}
+function deleteSelected() {
+  const n = selectedPeople.size;
+  if (!n) return;
+  if (!confirm(`Delete ${n} teammate${n > 1 ? 's' : ''}? This can't be undone.`)) return;
+  state.members = state.members.filter((_, gi) => !selectedPeople.has(gi));
+  selectedPeople.clear();
+  expandedPeople.clear(); boardPeople.clear(); povPerson = -1;   // indices shifted — reset volatile sets
+  render();
 }
 
 // ── planner ──────────────────────────────────────────────────────────────────
@@ -836,6 +871,33 @@ function setupComboboxes() {
 // Inline add from the dotted row under the timeline: type a name, pick a zone,
 // and the teammate appears on the board — no drawer, no Add button. Defaults to
 // 9–5, no team; edit later for hours/team/days-off.
+// ── bulk add (paste "Name, City" lines) ────────────────────────────────────────
+function parseBulk(text) {
+  return String(text).split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+    const i = line.indexOf(',');
+    const name = (i >= 0 ? line.slice(0, i) : line).trim();
+    const loc = (i >= 0 ? line.slice(i + 1) : '').trim();
+    const tz = (name && loc) ? (parseOffsetZone(loc) || (tzSearch(loc, 1)[0] || {}).tz || (isValidZone(loc) ? loc : '')) : '';
+    return { name, tz };
+  });
+}
+function bindBulkAdd() {
+  const dlg = $('bulkDialog');
+  $('bulkAddBtn').addEventListener('click', () => { $('bulkText').value = ''; $('bulkPreview').textContent = ''; dlg.showModal(); });
+  $('bulkText').addEventListener('input', () => {
+    const rows = parseBulk($('bulkText').value);
+    $('bulkPreview').textContent = rows.length ? `${rows.filter(r => r.tz).length} of ${rows.length} line(s) resolve to a zone.` : '';
+  });
+  dlg.addEventListener('close', () => {
+    if (dlg.returnValue !== 'add') return;
+    const rows = parseBulk($('bulkText').value).filter(r => r.tz);
+    if (!rows.length) { toast('No valid lines to add.'); return; }
+    rows.forEach(r => state.members.push({ name: r.name, tz: r.tz, start: 9, end: 17, teamId: '', weekend: DEFAULT_WEEKEND.slice(), always: false }));
+    render();
+    toast(`➕ Added ${rows.length} teammate${rows.length > 1 ? 's' : ''}.`);
+  });
+}
+
 function addInlineMember(tz) {
   const name = $('addName').value.trim();
   if (!name) { toast('Type a name first.'); $('addName').focus(); return; }
@@ -926,13 +988,6 @@ function bindControls() {
     const v = !HOUR_12; setHour12(v); localStorage.setItem('tzclock.fmt12', v ? '1' : '0');
     toggleSync('fmt12Btn', v); render();
   });
-  // Settings panel toggle
-  const settingsBtn = $('settingsBtn');
-  const settingsPanel = $('settingsPanel');
-  if (settingsBtn && settingsPanel) {
-    settingsBtn.addEventListener('click', () => { settingsPanel.hidden = !settingsPanel.hidden; });
-    document.addEventListener('click', e => { if (!settingsPanel.hidden && !e.target.closest('.settings-wrap') && !e.target.closest('.color-pop')) settingsPanel.hidden = true; });
-  }
   $('search').addEventListener('input', e => { search = e.target.value; renderLanes(); renderRoster(); updateScrub(); });
   $('duration').addEventListener('change', renderPlanner);
   $('blockBtn').addEventListener('click', () => {
@@ -975,10 +1030,6 @@ function bindControls() {
   });
 
   $('accentPick').addEventListener('input', e => { applyAccent(e.target.value); localStorage.setItem('tzclock.accent', e.target.value); });
-  $('resetColors').addEventListener('click', () => {
-    state.teams.forEach((t, i) => { t.color = i % TEAM_COLORS.length; delete t.customColor; });
-    render();
-  });
 
   $('sideToggle').addEventListener('click', () => {
     const collapsed = document.querySelector('.app').classList.toggle('side-collapsed');
@@ -1037,16 +1088,6 @@ function renderTeamList() {
     activeTeams.delete(id);
     render();
   }));
-}
-
-// Central colour management in Settings → Colours: every team's swatch in one place.
-function renderSettingsColors() {
-  const box = $('settingsTeamColors');
-  if (!box) return;
-  if (state.teams.length === 0) { box.innerHTML = '<span class="muted small">No teams yet.</span>'; return; }
-  box.innerHTML = state.teams.map(t =>
-    `<div class="sp-tc-row"><button class="dot dot-btn" style="background:${teamColor(t)}" data-colorteam="${t.id}" aria-label="${esc(t.name)} colour"></button>${esc(t.name)}</div>`).join('');
-  box.querySelectorAll('[data-colorteam]').forEach(b => b.addEventListener('click', () => openColorPicker(b.dataset.colorteam, b)));
 }
 
 // ── team colour picker (palette swatches + custom) ─────────────────────────────

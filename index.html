@@ -45,34 +45,19 @@
           <ul id="homeTzList" class="combo-list" role="listbox" hidden></ul>
         </div>
         <span class="spacer"></span>
-        <div class="settings-wrap">
-          <button id="settingsBtn" class="btn ghost icon-btn" title="Settings">⚙️</button>
-          <div id="settingsPanel" class="settings-panel" hidden>
-            <div class="sp-section">
-              <span class="sp-label">Layers</span>
-              <div class="layer-list">
-                <button id="bandsBtn" class="layer-toggle" title="Show working-hour bands"><span>Working hours</span><span class="sw"></span></button>
-                <button id="dayNightBtn" class="layer-toggle" title="Show day/night sky gradient"><span>Day / night sky</span><span class="sw"></span></button>
-                <button id="compactBtn" class="layer-toggle" title="Denser rows"><span>Compact rows</span><span class="sw"></span></button>
-                <button id="fmt12Btn" class="layer-toggle" title="12-hour clock"><span>12-hour clock</span><span class="sw"></span></button>
-              </div>
-            </div>
-            <div class="sp-section">
-              <span class="sp-label">Colours</span>
-              <label class="sp-color-row"><span>App accent</span><input type="color" id="accentPick" aria-label="App accent colour" /></label>
-              <div id="settingsTeamColors" class="sp-team-colors"></div>
-              <button id="resetColors" class="btn ghost sm">Reset team colours</button>
-            </div>
-            <div class="sp-section">
-              <span class="sp-label">Zoom</span>
-              <div class="sp-row">
-                <button id="zoomOut" class="btn ghost icon-btn" title="Zoom out">−</button>
-                <button id="fitBtn" class="btn ghost sm">Fit</button>
-                <button id="zoomIn" class="btn ghost icon-btn" title="Zoom in">+</button>
-              </div>
-            </div>
-          </div>
+        <!-- visible layer toggles (no hidden settings panel) -->
+        <div class="layer-pills" role="group" aria-label="Layers">
+          <button id="bandsBtn" class="pill" title="Working-hour bands">▤ Hours</button>
+          <button id="dayNightBtn" class="pill" title="Day / night sky gradient">☀ Sky</button>
+          <button id="compactBtn" class="pill" title="Compact rows">≡ Compact</button>
+          <button id="fmt12Btn" class="pill" title="12-hour clock">12h</button>
         </div>
+        <div class="zoom-group">
+          <button id="zoomOut" class="btn ghost icon-btn" title="Zoom out">−</button>
+          <button id="fitBtn" class="btn ghost sm">Fit</button>
+          <button id="zoomIn" class="btn ghost icon-btn" title="Zoom in">+</button>
+        </div>
+        <label class="accent-swatch" title="App accent colour"><input type="color" id="accentPick" aria-label="App accent colour" /></label>
       </div>
 
       <!-- team filters double as the planner scope -->
@@ -140,10 +125,12 @@
           <h2>👥 Team</h2>
           <div class="head-actions">
             <input id="search" class="mini-search" placeholder="Search…" aria-label="Search teammates" />
+            <button id="bulkAddBtn" class="btn ghost sm" title="Paste several at once">＋＋ Many</button>
             <button id="openAdd" class="btn primary sm">＋ Person</button>
           </div>
         </div>
-        <p class="muted small">Drag a person onto a team to move them.</p>
+        <p class="muted small">Drag onto a team to move · checkbox to multi-select.</p>
+        <div id="selectBar" class="select-bar" hidden></div>
         <div id="roster" class="roster"></div>
         <button id="openTeams" class="btn ghost block">＋ Manage teams</button>
       </section>
@@ -262,6 +249,20 @@
       </label>
       <div class="form-actions">
         <button value="save" class="btn primary">Save meeting</button>
+        <button value="cancel" class="btn ghost" formnovalidate>Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Bulk add — paste several teammates at once -->
+  <dialog id="bulkDialog" class="dialog">
+    <form method="dialog">
+      <h3>Add several teammates</h3>
+      <p class="muted small">One per line: <code>Name, City</code> (or <code>Name, +5:30</code>). Defaults to 9–5, no team.</p>
+      <textarea id="bulkText" rows="8" placeholder="Mia, New York&#10;Priya, India&#10;Kenji, Tokyo&#10;Sam, +5:30"></textarea>
+      <p id="bulkPreview" class="muted small"></p>
+      <div class="form-actions">
+        <button value="add" class="btn primary">Add all</button>
         <button value="cancel" class="btn ghost" formnovalidate>Cancel</button>
       </div>
     </form>
