@@ -141,7 +141,11 @@ function encodeState(state) {
     v: SCHEMA_VERSION,
     w: state.wid || '',
     o: state.org || '',
-    tm: state.teams.map(t => ({ i: t.id, n: t.name, c: t.color })),
+    tm: state.teams.map(t => {
+      const out = { i: t.id, n: t.name, c: t.color };
+      if (t.customColor) out.cc = t.customColor;     // only when overridden
+      return out;
+    }),
     mb: state.members.map(m => {
       const out = { n: m.name, t: tzToWire(m.tz), s: m.start, e: m.end, g: m.teamId || '' };
       if (!sameWeekend(m.weekend)) out.wk = m.weekend;   // only store when non-default
@@ -177,7 +181,11 @@ function decodeState(encoded) {
 
     const teams = (Array.isArray(wire.tm) ? wire.tm : [])
       .filter(t => t && typeof t.i === 'string' && typeof t.n === 'string')
-      .map(t => ({ id: t.i, name: t.n, color: Number.isInteger(t.c) ? t.c : 0 }));
+      .map(t => {
+        const team = { id: t.i, name: t.n, color: Number.isInteger(t.c) ? t.c : 0 };
+        if (/^#[0-9a-fA-F]{6}$/.test(t.cc)) team.customColor = t.cc;   // validated hex only
+        return team;
+      });
 
     const teamIds = new Set(teams.map(t => t.id));
 

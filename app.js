@@ -14,7 +14,23 @@
  * `DateTime` comes from timeutil.js (classic scripts share one global scope).
  */
 
-const TEAM_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#ef4444', '#14b8a6', '#f97316'];
+// Central team palette — 12 hues at a fixed saturation/lightness so every team
+// color is equally vivid and harmonious (color theory: same S/L, spread hue).
+// Ordered to keep neighbours visually distinct. Stored as hex so the native
+// colour picker and CSS agree. A team holds an index into this, or an arbitrary
+// `customColor` hex when overridden.
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(255 * c).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+const TEAM_HUES = [212, 28, 150, 330, 265, 45, 122, 352, 190, 88, 300, 14];
+const TEAM_COLORS = TEAM_HUES.map(h => hslToHex(h, 62, 52));
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];   // Mon=1 .. Sun=7
 const SAFE_URL_LEN = 1800;
 const ZOOM_MIN = 30, ZOOM_MAX = 120;
@@ -30,7 +46,6 @@ let boardCustom = false;                // board "Custom" mode: pick specific pe
 let boardPeople = new Set();            // member indices shown when boardCustom
 let showBands = localStorage.getItem('tzclock.bands') !== '0';    // working-hour bands
 let dayNight = localStorage.getItem('tzclock.daynight') === '1';   // day/night gradient view
-let dayNightPalette = +(localStorage.getItem('tzclock.palette') ?? 1);  // which DN_PALETTES entry
 let compact = localStorage.getItem('tzclock.compact') === '1';     // dense rows
 let expandedPeople = new Set();                                    // per-person expanded lanes
 let povPerson = -1;                                                // person whose POV is shown (-1 = device tz)
@@ -59,14 +74,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // First-visit onboarding
   if (!localStorage.getItem('tzclock.onboarded')) showOnboarding();
 
-  if (!Number.isInteger(dayNightPalette) || dayNightPalette < 0 || dayNightPalette >= DN_PALETTES.length) dayNightPalette = 1;
-  $('paletteSelect').innerHTML = DN_PALETTES.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join('');
-  $('paletteSelect').value = String(dayNightPalette);
   document.documentElement.style.setProperty('--hour-w', zoom + 'px');
   const f12 = localStorage.getItem('tzclock.fmt12');
   if (f12 !== null) setHour12(f12 === '1');
   document.documentElement.classList.toggle('compact-mode', compact);
   $('stage').classList.toggle('daynight-active', dayNight);
+  if (localStorage.getItem('tzclock.sideCollapsed') === '1') document.querySelector('.app').classList.add('side-collapsed');
   if (localStorage.getItem('tzclock.mtgOpen') === '0') $('toggleMeetings').closest('.meetings-card').classList.add('collapsed');
 
   initDaysOff();
@@ -150,10 +163,8 @@ function scopeMembers() {
 }
 function teamById(id) { return state.teams.find(t => t.id === id); }
 function hoursLabel(m) { return m.always ? 'Always available' : `${hourLabel(m.start)}–${hourLabel(m.end)}`; }
-function colorOf(member) {
-  const t = teamById(member.teamId);
-  return t ? TEAM_COLORS[t.color % TEAM_COLORS.length] : '#94a3b8';
-}
+function teamColor(t) { return t ? (t.customColor || TEAM_COLORS[t.color % TEAM_COLORS.length]) : '#94a3b8'; }
+function colorOf(member) { return teamColor(teamById(member.teamId)); }
 function pruneActiveTeams() {
   for (const id of [...activeTeams]) if (!teamById(id)) activeTeams.delete(id);
   for (const i of [...boardPeople]) if (!state.members[i]) boardPeople.delete(i);
@@ -183,7 +194,7 @@ function renderTeamFilter() {
     `<button class="tf-chip ${dot ? 'person-chip' : ''} ${on ? 'active' : ''}" data-${attr}="${val}">${dot || ''}${esc(label)}</button>`;
   let html = chip('team', '__all', '🌐 Everyone', !boardCustom && activeTeams.size === 0, '');
   for (const t of state.teams) {
-    const dot = `<span class="dot" style="background:${TEAM_COLORS[t.color % TEAM_COLORS.length]}"></span>`;
+    const dot = `<span class="dot" style="background:${teamColor(t)}"></span>`;
     html += chip('team', t.id, t.name, !boardCustom && activeTeams.has(t.id), dot);
   }
   html += chip('team', '__custom', '⭐ Custom', boardCustom, '');
@@ -286,7 +297,7 @@ const DN_PALETTES = [
 ];
 
 // The active palette's gradient stops (Soft Gray is the default = index 1).
-function dnKeys() { return (DN_PALETTES[dayNightPalette] || DN_PALETTES[1]).keys; }
+function dnKeys() { return DN_PALETTES[1].keys; }   // Soft Gray — the central day/night ramp
 function dnColor(h) {
   const keys = dnKeys();
   h = mod24(h);
@@ -519,7 +530,7 @@ function renderRoster() {
     const grp = document.createElement('div');
     grp.className = 'team-group';
     grp.dataset.team = g.id;
-    const swatch = g.color >= 0 ? `<span class="dot" style="background:${TEAM_COLORS[g.color % TEAM_COLORS.length]}"></span>` : '';
+    const swatch = g.color >= 0 ? `<span class="dot" style="background:${teamColor(teamById(g.id))}"></span>` : '';
     grp.innerHTML = `<div class="group-head">${swatch}${esc(g.name)} <span class="count">${members.length}</span></div>
       <div class="chips">${members.map(({ m, gi }) => personChip(m, gi)).join('') || '<span class="muted small">drop here</span>'}</div>`;
     box.appendChild(grp);
@@ -791,11 +802,6 @@ function bindControls() {
     $('stage').classList.toggle('daynight-active', dayNight);
     toggleSync('dayNightBtn', dayNight); renderLanes(); positionMarkers(); updateScrub(); renderPlanner();
   });
-  $('paletteSelect').addEventListener('change', e => {
-    dayNightPalette = +e.target.value;
-    localStorage.setItem('tzclock.palette', String(dayNightPalette));
-    if (dayNight) { renderLanes(); positionMarkers(); updateScrub(); }
-  });
   $('compactBtn').addEventListener('click', () => {
     compact = !compact; localStorage.setItem('tzclock.compact', compact ? '1' : '0');
     document.documentElement.classList.toggle('compact-mode', compact);
@@ -853,6 +859,12 @@ function bindControls() {
     localStorage.setItem('tzclock.mtgOpen', card.classList.contains('collapsed') ? '0' : '1');
   });
 
+  $('sideToggle').addEventListener('click', () => {
+    const collapsed = document.querySelector('.app').classList.toggle('side-collapsed');
+    localStorage.setItem('tzclock.sideCollapsed', collapsed ? '1' : '0');
+    if (!userZoomed) fitZoom(); else positionMarkers();
+  });
+
   $('shareBtn').addEventListener('click', share);
 }
 
@@ -886,10 +898,11 @@ function renderTeamList() {
   if (state.teams.length === 0) { ul.innerHTML = '<li class="muted small">No teams yet.</li>'; return; }
   ul.innerHTML = state.teams.map(t => {
     const count = state.members.filter(m => m.teamId === t.id).length;
-    return `<li><span class="dot" style="background:${TEAM_COLORS[t.color % TEAM_COLORS.length]}"></span>
+    return `<li><button class="dot dot-btn" style="background:${teamColor(t)}" data-colorteam="${t.id}" title="Change colour" aria-label="Change ${esc(t.name)} colour"></button>
       <span class="tname">${esc(t.name)}</span><span class="muted small">${count}</span>
       <button class="icon" data-delteam="${t.id}" title="Delete team">🗑️</button></li>`;
   }).join('');
+  ul.querySelectorAll('[data-colorteam]').forEach(b => b.addEventListener('click', e => openColorPicker(b.dataset.colorteam, b)));
   ul.querySelectorAll('[data-delteam]').forEach(b => b.addEventListener('click', () => {
     const id = b.dataset.delteam;
     const t = teamById(id);
@@ -901,6 +914,37 @@ function renderTeamList() {
     activeTeams.delete(id);
     render();
   }));
+}
+
+// ── team colour picker (palette swatches + custom) ─────────────────────────────
+let _colorPop = null;
+function closeColorPicker() {
+  if (_colorPop) { _colorPop.remove(); _colorPop = null; document.removeEventListener('mousedown', _cpOutside, true); }
+}
+function _cpOutside(e) {
+  if (!e.target.closest('.color-pop') && !e.target.closest('[data-colorteam]')) closeColorPicker();
+}
+function openColorPicker(teamId, anchor) {
+  closeColorPicker();
+  const t = teamById(teamId); if (!t) return;
+  const pop = document.createElement('div');
+  pop.className = 'color-pop';
+  const swatches = TEAM_COLORS.map((c, i) =>
+    `<button class="cp-swatch ${!t.customColor && t.color === i ? 'sel' : ''}" style="background:${c}" data-ci="${i}" title="Colour ${i + 1}"></button>`).join('');
+  pop.innerHTML = `<div class="cp-grid">${swatches}</div>
+    <label class="cp-custom">Custom <input type="color" value="${teamColor(t)}" aria-label="Custom team colour" /></label>`;
+  document.body.appendChild(pop);
+  _colorPop = pop;
+  const r = anchor.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
+  pop.style.top = (r.bottom + 6) + 'px';
+  pop.querySelectorAll('[data-ci]').forEach(b => b.addEventListener('click', () => {
+    t.color = +b.dataset.ci; delete t.customColor; closeColorPicker(); render();
+  }));
+  const inp = pop.querySelector('input[type=color]');
+  inp.addEventListener('input', e => { t.customColor = e.target.value; render(); });   // live preview
+  inp.addEventListener('change', () => { closeColorPicker(); render(); });
+  setTimeout(() => document.addEventListener('mousedown', _cpOutside, true), 0);
 }
 
 function onSubmitMember(e) {
