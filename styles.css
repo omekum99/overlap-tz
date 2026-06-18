@@ -255,8 +255,8 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 .lane.off .band { opacity: .25; }
 .lane.off .tl-track.work { background-color: color-mix(in srgb, var(--muted) 8%, transparent); }
 
-/* day/night view — gradient ramp, bands hidden (too cluttered) */
-.tl-track.dn .band { display: none; }
+/* day/night view — gradient ramp; bands stay visible, outlined for contrast */
+.tl-track.dn .band { opacity: .7; border-top: 2px solid rgba(255,255,255,.75); border-bottom: 2px solid rgba(255,255,255,.75); }
 .lane.off .tl-track.dn { filter: saturate(.4) brightness(.9); }
 
 .off-pill { font-size: .58rem; font-weight: 700; color: var(--muted); background: var(--bg-3);
@@ -271,8 +271,9 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 /* highlight the lane of the active POV person */
 .lane.pov { background: var(--accent-soft); }
 .lane.pov .tl-label { background: var(--accent-soft); }
-.live { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-family: var(--font-mono);
-  font-size: .66rem; font-weight: 700; padding: 1px 6px; background: var(--bg-3); color: var(--muted); border: 1px solid var(--line); }
+/* live local-time chip — lives in the sticky label so it's always visible */
+.live { font-family: var(--font-mono); font-size: .64rem; font-weight: 700; padding: 0 5px; margin-left: 4px;
+  background: var(--bg-3); color: var(--muted); border: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
 .live.working { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 
 .marker { position: absolute; top: 0; bottom: 0; width: 2px; z-index: 5; }

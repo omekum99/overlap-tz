@@ -387,12 +387,12 @@ function renderLanes() {
         <button class="lane-expand ${isExpanded ? 'expanded' : ''}" data-expand="${gi}" title="Toggle details">${expandIcon}</button>
         <div class="who">
           <div class="name">${esc(m.name)}${off ? ' <span class="tag-off">off</span>' : ''}
-            <span class="off-pill mono">${offset}</span></div>
-          <div class="meta">${esc(labelForTz(m.tz))} · ${hoursLabel(m)}</div>
+            <span class="live mono" id="live-${gi}" title="Their local time at the scrubber">—</span></div>
+          <div class="meta">${esc(labelForTz(m.tz))} · ${hoursLabel(m)} · <span class="mono">${offset}</span></div>
         </div>
         <button class="lane-tz ${gi === povPerson ? 'active' : ''}" data-ltz="${esc(m.tz)}" data-gi="${gi}" title="${gi === povPerson ? esc(m.name) + "'s view — click to reset" : 'View board from ' + esc(m.name) + "'s perspective"}">⌖</button>
       </div>
-      <div class="tl-track work${dayNight ? ' dn' : ''}"${trackStyle}>${dn}${bands}<span class="live" id="live-${gi}"></span></div>`;
+      <div class="tl-track work${dayNight ? ' dn' : ''}"${trackStyle}>${dn}${bands}</div>`;
     wrap.appendChild(row);
 
     if (isExpanded) {
