@@ -58,6 +58,12 @@
               </div>
             </div>
             <div class="sp-section">
+              <span class="sp-label">Colours</span>
+              <label class="sp-color-row"><span>App accent</span><input type="color" id="accentPick" aria-label="App accent colour" /></label>
+              <div id="settingsTeamColors" class="sp-team-colors"></div>
+              <button id="resetColors" class="btn ghost sm">Reset team colours</button>
+            </div>
+            <div class="sp-section">
               <span class="sp-label">Zoom</span>
               <div class="sp-row">
                 <button id="zoomOut" class="btn ghost icon-btn" title="Zoom out">−</button>
@@ -95,6 +101,18 @@
           <div id="scrubber" class="marker scrub" tabindex="0" aria-label="Time scrubber"></div>
           <div id="hoverTip" class="hover-tip" hidden></div>
         </div>
+      </div>
+
+      <!-- inline add-a-teammate row — type a name, pick a zone, they appear above -->
+      <div class="add-row" id="addRow">
+        <span class="add-row-plus">＋</span>
+        <input id="addName" class="add-name" placeholder="Add a teammate — type their name…" maxlength="30" aria-label="New teammate name" />
+        <div class="combo add-combo">
+          <input id="addTz" class="combo-input" placeholder="city or +5:30" autocomplete="off"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="addTzList" aria-label="New teammate timezone" />
+          <ul id="addTzList" class="combo-list" role="listbox" hidden></ul>
+        </div>
+        <span class="add-row-hint muted small">pick a zone to add · defaults to 9–5, no team</span>
       </div>
 
       <!-- meeting planner -->

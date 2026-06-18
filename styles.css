@@ -130,6 +130,13 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 .sp-row { display: flex; align-items: center; gap: .35rem; }
 .sp-row.toggles { flex-wrap: wrap; }
 
+/* settings → Colours */
+.sp-color-row { display: flex; align-items: center; justify-content: space-between; font-size: .8rem; color: var(--text); }
+.sp-color-row input[type=color] { width: 30px; height: 20px; padding: 0; border: 1px solid var(--line-strong); cursor: pointer; background: none; }
+.sp-team-colors { display: flex; flex-direction: column; gap: .25rem; }
+.sp-tc-row { display: flex; align-items: center; gap: .45rem; font-size: .76rem; color: var(--text); }
+.sp-tc-row .dot-btn { width: 16px; height: 16px; flex: none; }
+
 /* layers — a clean list of on/off switches */
 .layer-list { display: flex; flex-direction: column; }
 .layer-toggle { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
@@ -251,12 +258,29 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 
 .tl-track.work { height: var(--lane-h); border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
   background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(var(--hour-w) - 1px), var(--line) calc(var(--hour-w) - 1px), var(--line) var(--hour-w)); }
+/* inline add-a-teammate row */
+.add-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .55rem; border: 1px dashed var(--line-strong);
+  background: color-mix(in srgb, var(--accent) 3%, transparent); flex: none; }
+.add-row-plus { color: var(--accent); font-weight: 700; font-size: 1rem; flex: none; }
+.add-name { flex: 1.2; min-width: 0; border: none; background: transparent; font-size: .85rem; padding: .25rem; }
+.add-name:focus { outline: none; box-shadow: none; }
+.add-combo { flex: 1; min-width: 120px; }
+.add-combo .combo-input { padding: .3rem .5rem; font-size: .8rem; }
+.add-row-hint { flex: none; }
+@media (max-width: 700px) { .add-row-hint { display: none; } }
+
 .band { position: absolute; top: 6px; bottom: 6px; background: var(--bc, var(--band)); opacity: .92; }
+/* drag handles to resize working hours on the focused day */
+.band-handle { position: absolute; top: 3px; bottom: 3px; width: 10px; margin-left: -5px; cursor: ew-resize;
+  z-index: 3; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .12s; }
+.band-handle::after { content: ''; width: 3px; height: 60%; background: var(--text); border: 1px solid var(--bg); border-radius: 2px; }
+.lane:hover .band-handle { opacity: .65; }
+.band-handle:hover { opacity: 1; }
 .lane.off .band { opacity: .25; }
 .lane.off .tl-track.work { background-color: color-mix(in srgb, var(--muted) 8%, transparent); }
 
-/* day/night view — gradient ramp, bands hidden (too cluttered) */
-.tl-track.dn .band { display: none; }
+/* day/night view — gradient ramp; bands stay visible, outlined for contrast */
+.tl-track.dn .band { opacity: .7; border-top: 2px solid rgba(255,255,255,.75); border-bottom: 2px solid rgba(255,255,255,.75); }
 .lane.off .tl-track.dn { filter: saturate(.4) brightness(.9); }
 
 .off-pill { font-size: .58rem; font-weight: 700; color: var(--muted); background: var(--bg-3);
@@ -271,8 +295,9 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 /* highlight the lane of the active POV person */
 .lane.pov { background: var(--accent-soft); }
 .lane.pov .tl-label { background: var(--accent-soft); }
-.live { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-family: var(--font-mono);
-  font-size: .66rem; font-weight: 700; padding: 1px 6px; background: var(--bg-3); color: var(--muted); border: 1px solid var(--line); }
+/* live local-time chip — lives in the sticky label so it's always visible */
+.live { font-family: var(--font-mono); font-size: .64rem; font-weight: 700; padding: 0 5px; margin-left: 4px;
+  background: var(--bg-3); color: var(--muted); border: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
 .live.working { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 
 .marker { position: absolute; top: 0; bottom: 0; width: 2px; z-index: 5; }

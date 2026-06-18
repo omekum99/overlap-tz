@@ -31,6 +31,15 @@ function hslToHex(h, s, l) {
 }
 const TEAM_HUES = [212, 28, 150, 330, 265, 45, 122, 352, 190, 88, 300, 14];
 const TEAM_COLORS = TEAM_HUES.map(h => hslToHex(h, 62, 52));
+const DEFAULT_ACCENT = '#5f7d63';
+
+// The app's central accent colour. accent-soft is derived so the whole UI stays
+// coherent when you change it from Settings → Colours.
+function applyAccent(color) {
+  const root = document.documentElement.style;
+  root.setProperty('--accent', color);
+  root.setProperty('--accent-soft', `color-mix(in srgb, ${color} 16%, var(--bg))`);
+}
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];   // Mon=1 .. Sun=7
 const SAFE_URL_LEN = 1800;
 const ZOOM_MIN = 30, ZOOM_MAX = 120;
@@ -88,6 +97,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.documentElement.style.setProperty('--hour-w', zoom + 'px');
   document.documentElement.style.setProperty('--total-h', TOTAL_H);
+  const savedAccent = localStorage.getItem('tzclock.accent');
+  if (savedAccent) applyAccent(savedAccent);
+  $('accentPick').value = savedAccent || DEFAULT_ACCENT;
   const f12 = localStorage.getItem('tzclock.fmt12');
   if (f12 !== null) setHour12(f12 === '1');
   document.documentElement.classList.toggle('compact-mode', compact);
@@ -145,6 +157,7 @@ function render() {
   renderTeamFilter();
   renderTeamSelect();
   renderTeamList();
+  renderSettingsColors();
   renderAxis();
   renderLanes();
   renderRoster();
@@ -366,6 +379,14 @@ function renderLanes() {
           .join('');
       }
     }
+    // Drag handles on the focused day's band edges → resize working hours directly.
+    let handles = '';
+    if (showBands && !m.always) {
+      const sa = memberHourToAxis(m.start, m.tz, refDate, homeTz);
+      const ea = memberHourToAxis(m.end, m.tz, refDate, homeTz);
+      handles = `<div class="band-handle" data-gi="${gi}" data-edge="start" style="left:${gHour(CENTER_DAY, sa) / TOTAL_H * 100}%" title="Drag to change start"></div>
+        <div class="band-handle" data-gi="${gi}" data-edge="end" style="left:${gHour(CENTER_DAY, ea) / TOTAL_H * 100}%" title="Drag to change end"></div>`;
+    }
 
     let dn = '', trackStyle = '';
     if (dayNight) {
@@ -387,12 +408,12 @@ function renderLanes() {
         <button class="lane-expand ${isExpanded ? 'expanded' : ''}" data-expand="${gi}" title="Toggle details">${expandIcon}</button>
         <div class="who">
           <div class="name">${esc(m.name)}${off ? ' <span class="tag-off">off</span>' : ''}
-            <span class="off-pill mono">${offset}</span></div>
-          <div class="meta">${esc(labelForTz(m.tz))} · ${hoursLabel(m)}</div>
+            <span class="live mono" id="live-${gi}" title="Their local time at the scrubber">—</span></div>
+          <div class="meta">${esc(labelForTz(m.tz))} · ${hoursLabel(m)} · <span class="mono">${offset}</span></div>
         </div>
         <button class="lane-tz ${gi === povPerson ? 'active' : ''}" data-ltz="${esc(m.tz)}" data-gi="${gi}" title="${gi === povPerson ? esc(m.name) + "'s view — click to reset" : 'View board from ' + esc(m.name) + "'s perspective"}">⌖</button>
       </div>
-      <div class="tl-track work${dayNight ? ' dn' : ''}"${trackStyle}>${dn}${bands}<span class="live" id="live-${gi}"></span></div>`;
+      <div class="tl-track work${dayNight ? ' dn' : ''}"${trackStyle}>${dn}${bands}${handles}</div>`;
     wrap.appendChild(row);
 
     if (isExpanded) {
@@ -418,6 +439,41 @@ function renderLanes() {
     else { povPerson = gi; homeTz = b.dataset.ltz; localStorage.setItem('tzclock.home', homeTz); }
     render();
   }));
+}
+
+// Axis hour on the focused day → that member's local clock hour (snapped to 30m).
+function axisToMemberLocal(axisHour, m) {
+  const inst = axisInstant(axisHour, refDate, homeTz).setZone(m.tz);
+  return Math.round((inst.hour + inst.minute / 60) * 2) / 2;
+}
+// Drag a band edge to reshape working hours. Listens on document (not the handle)
+// so live re-renders that recreate the handle don't break the drag.
+let draggingBand = false;
+function startBandDrag(e, gi, edge) {
+  const m = state.members[gi];
+  if (!m) return;
+  draggingBand = true;
+  document.body.style.cursor = 'ew-resize';
+  let raf = null;
+  const move = ev => {
+    const g = hourFromClientX(ev.clientX);
+    if (g == null) return;
+    const axisHour = Math.max(0, Math.min(24, g - CENTER_DAY * 24));   // clamp to the focused day
+    let v = axisToMemberLocal(axisHour, m);
+    const other = edge === 'start' ? m.end : m.start;
+    if (v === other) v = mod24(v + (edge === 'start' ? -0.5 : 0.5));    // never zero-width
+    m[edge] = mod24(v);
+    if (!raf) raf = requestAnimationFrame(() => { raf = null; renderLanes(); positionMarkers(); updateScrub(); });
+  };
+  const up = () => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    draggingBand = false;
+    document.body.style.cursor = '';
+    render(); save();
+  };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
 }
 
 function xForHour(g) { return LW() + g * HW(); }      // g = global window hour (0..TOTAL_H)
@@ -451,22 +507,26 @@ function bindBoard() {
   });
 
   inner.addEventListener('pointermove', e => {
-    if (e.target.closest('.tl-label')) return;
+    if (draggingBand || e.target.closest('.tl-label')) return;
     const g = hourFromClientX(e.clientX);
     if (g == null) return;
     placeScrub(g); updateScrub(g); showTip(g);
   });
-  inner.addEventListener('pointerleave', () => { placeScrub(scrubGlobal()); updateScrub(); hideTip(); });
-  inner.addEventListener('pointerdown', e => { if (!e.target.closest('.tl-label')) downX = e.clientX; });
+  inner.addEventListener('pointerleave', () => { if (draggingBand) return; placeScrub(scrubGlobal()); updateScrub(); hideTip(); });
+  inner.addEventListener('pointerdown', e => {
+    const handle = e.target.closest('.band-handle');
+    if (handle) { e.preventDefault(); e.stopPropagation(); startBandDrag(e, +handle.dataset.gi, handle.dataset.edge); return; }
+    if (!e.target.closest('.tl-label')) downX = e.clientX;
+  });
   inner.addEventListener('pointerup', e => {
-    if (e.target.closest('.tl-label')) return;
+    if (draggingBand || e.target.closest('.tl-label') || e.target.closest('.band-handle')) return;
     const g = hourFromClientX(e.clientX);
     if (g != null) pinScrub(g);
     downX = null;
   });
 
   inner.addEventListener('dblclick', e => {
-    if (e.target.closest('.tl-label')) return;
+    if (e.target.closest('.tl-label') || e.target.closest('.band-handle')) return;
     const g = hourFromClientX(e.clientX);
     if (g == null) return;
     const scope = currentScopeWorking();
@@ -769,6 +829,22 @@ function getDaysOff() { return [...document.querySelectorAll('#mDaysOff .day-tog
 function setupComboboxes() {
   makeCombo($('mTz'), $('mTzList'), () => {});
   makeCombo($('homeTz'), $('homeTzList'), setHomeTz);
+  makeCombo($('addTz'), $('addTzList'), addInlineMember);
+  $('addName').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('addTz').focus(); } });
+}
+
+// Inline add from the dotted row under the timeline: type a name, pick a zone,
+// and the teammate appears on the board — no drawer, no Add button. Defaults to
+// 9–5, no team; edit later for hours/team/days-off.
+function addInlineMember(tz) {
+  const name = $('addName').value.trim();
+  if (!name) { toast('Type a name first.'); $('addName').focus(); return; }
+  if (!isValidZone(tz)) return;
+  state.members.push({ name, tz, start: 9, end: 17, teamId: '', weekend: DEFAULT_WEEKEND.slice(), always: false });
+  $('addName').value = ''; $('addTz').value = ''; $('addTz').dataset.tz = '';
+  render();
+  $('addName').focus();
+  toast('➕ Added ' + name);
 }
 
 // Explicitly view the whole board in a chosen zone. Unlike POV (which re-bases to
@@ -855,7 +931,7 @@ function bindControls() {
   const settingsPanel = $('settingsPanel');
   if (settingsBtn && settingsPanel) {
     settingsBtn.addEventListener('click', () => { settingsPanel.hidden = !settingsPanel.hidden; });
-    document.addEventListener('click', e => { if (!settingsPanel.hidden && !e.target.closest('.settings-wrap')) settingsPanel.hidden = true; });
+    document.addEventListener('click', e => { if (!settingsPanel.hidden && !e.target.closest('.settings-wrap') && !e.target.closest('.color-pop')) settingsPanel.hidden = true; });
   }
   $('search').addEventListener('input', e => { search = e.target.value; renderLanes(); renderRoster(); updateScrub(); });
   $('duration').addEventListener('change', renderPlanner);
@@ -896,6 +972,12 @@ function bindControls() {
     const card = $('toggleMeetings').closest('.meetings-card');
     card.classList.toggle('collapsed');
     localStorage.setItem('tzclock.mtgOpen', card.classList.contains('collapsed') ? '0' : '1');
+  });
+
+  $('accentPick').addEventListener('input', e => { applyAccent(e.target.value); localStorage.setItem('tzclock.accent', e.target.value); });
+  $('resetColors').addEventListener('click', () => {
+    state.teams.forEach((t, i) => { t.color = i % TEAM_COLORS.length; delete t.customColor; });
+    render();
   });
 
   $('sideToggle').addEventListener('click', () => {
@@ -955,6 +1037,16 @@ function renderTeamList() {
     activeTeams.delete(id);
     render();
   }));
+}
+
+// Central colour management in Settings → Colours: every team's swatch in one place.
+function renderSettingsColors() {
+  const box = $('settingsTeamColors');
+  if (!box) return;
+  if (state.teams.length === 0) { box.innerHTML = '<span class="muted small">No teams yet.</span>'; return; }
+  box.innerHTML = state.teams.map(t =>
+    `<div class="sp-tc-row"><button class="dot dot-btn" style="background:${teamColor(t)}" data-colorteam="${t.id}" aria-label="${esc(t.name)} colour"></button>${esc(t.name)}</div>`).join('');
+  box.querySelectorAll('[data-colorteam]').forEach(b => b.addEventListener('click', () => openColorPicker(b.dataset.colorteam, b)));
 }
 
 // ── team colour picker (palette swatches + custom) ─────────────────────────────
