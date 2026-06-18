@@ -223,8 +223,8 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 .board::-webkit-scrollbar { height: 12px; width: 10px; }
 .board::-webkit-scrollbar-thumb { background: var(--line-strong); border: 3px solid var(--bg); border-radius: 0; }
 .board::-webkit-scrollbar-track { background: var(--bg-3); }
-.board-inner { position: relative; width: calc(var(--label-w) + var(--hour-w) * 24); min-width: 100%; }
-.tl-row { display: grid; grid-template-columns: var(--label-w) calc(var(--hour-w) * 24); }
+.board-inner { position: relative; width: calc(var(--label-w) + var(--hour-w) * var(--total-h, 24)); min-width: 100%; }
+.tl-row { display: grid; grid-template-columns: var(--label-w) calc(var(--hour-w) * var(--total-h, 24)); }
 .tl-label { position: sticky; left: 0; z-index: 4; background: var(--bg);
   display: flex; align-items: center; gap: .5rem; padding: 0 .7rem; border-right: 1px solid var(--line); }
 .axis { position: sticky; top: 0; z-index: 6; background: var(--bg); border-bottom: 1px solid var(--line-strong); }
@@ -235,7 +235,10 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 .tick { width: var(--hour-w); flex: none; border-left: 1px solid var(--line); font-family: var(--font-mono);
   font-size: .62rem; color: var(--muted); padding: 4px 0 0 4px; }
 .tick:first-child { border-left: none; }
-.tick.daybreak { border-left-color: var(--line-strong); }
+.tick.daybreak { border-left: 2px solid var(--line-strong); }
+.tick.daybreak span { font-weight: 700; color: var(--text); white-space: nowrap; overflow: visible; }
+.tick.focus-day { color: var(--text); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tick.focus-day.daybreak span { color: var(--accent); }
 
 .lane { align-items: stretch; }
 .lane:hover .tl-label { background: var(--bg-3); }

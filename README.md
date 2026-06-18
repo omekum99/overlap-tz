@@ -33,23 +33,23 @@ python3 -m http.server 8000   # then visit http://localhost:8000
 
 ## Features
 
-- **24h timeline in *your* timezone** — defaults to your browser's zone (remembered). Use the
-  **🌐 Viewing in…** picker in the controls bar to re-base the whole board to any zone (search a
-  city or country); a live "now" marker shows the current time.
-- **Fits your screen** — the whole day is sized to the viewport by default (no page scroll);
-  **−/+** zoom in for detail and the board scrolls, **Fit** snaps back. Scroll past the edge
-  of the day to roll into the next/previous one.
+- **Continuous timeline in *your* timezone** — a sliding 3-day strip (yesterday · today ·
+  tomorrow) you scroll horizontally as one flow; day boundaries are labelled and the focused
+  day is highlighted. Defaults to your browser's zone (remembered); use the **🌐 Viewing in…**
+  picker to re-base the whole board to any zone. A live "now" marker tracks the current time.
+- **Focus follows you** — click anywhere (even on a neighbouring day) to pin the scrubber there;
+  that day becomes the focused day, and the planner, "Block time", and date strip follow it.
+- **Fits your screen** — one day is sized to the viewport by default; **−/+** zoom for detail,
+  **Fit** snaps back. Scroll past the window edge to slide further into past/future days.
 - **Hover to read every zone** — move the cursor across the timeline and each teammate's
   local time updates live (green = inside their working hours); click to pin, arrow-keys nudge.
 - **Scrollable date strip** — a week-at-a-glance row under the controls; scroll it and click
   any day. Today and the selected day are highlighted.
-- **Toggle buttons** — `▤ Bands` (working-hour bands), `☀🌙 Day` (day/night gradient),
-  `≡ Compact` (dense rows), `12h` clock. Settings panel (⚙️) in the top-right corner.
-- **Day/night gradient** — paints each person's local sky across the axis with ☀ at noon and
-  ☾ at midnight, plus dawn/dusk markers. Lets you *see* whose evening you'd be taking.
-  Choose from 8 color palettes (Warm Ember, Soft Gray, Ocean Blue, Mint Forest, Lavender
-  Dusk, Desert Sand, Rose Blush, Cool Arctic). Soft Gray is the default. The meeting planner
-  auto-hides when Day view is active.
+- **Layers panel** — a clean list of on/off switches (Working hours, Day / night sky, Compact
+  rows, 12-hour clock) in the settings panel (⚙️), top-right. Toggle what the timeline shows.
+- **Day/night sky gradient** — paints each person's local sky across every day in the window
+  with ☀ at noon and ☾ at midnight, plus dawn/dusk markers, so you can *see* whose evening
+  you'd be taking. The meeting planner auto-hides when this layer is on.
 - **Point-of-view (POV) mode** — click the ⌖ button on any lane to re-base the entire board
   to that person's timezone. Click again (or click another POV) to reset. The person in
   POV mode is always sorted first.
@@ -57,7 +57,9 @@ python3 -m http.server 8000   # then visit http://localhost:8000
   date, and schedule detail without leaving the board.
 - **UTC offset labels** — every lane shows the person's offset (e.g. `UTC+5:30`) inline.
 - **Team filters** — chips above the timeline: 🌐 Everyone, sub-team colors, or ⭐ Custom
-  to pick exactly who appears. The planner has its own independent scope.
+  to pick exactly who appears. The meeting planner follows this same scope.
+- **Team colors** — a color-theory palette (12 evenly-spaced hues); click a team's swatch to
+  pick a palette colour or a fully custom one. Collapse the side panel (⇥) for a full-width board.
 - **📅 Block time** — one button (or double-click on the timeline) opens a dialog where the
   date, start, and length are all editable inline.
 - **Date navigation** — ◀ / ▶ / date-picker / Today. Offsets are computed *per date*, so
