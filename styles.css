@@ -317,10 +317,12 @@ input[type="date"] { padding: .3rem .4rem; font-size: .78rem; max-width: 140px; 
 /* highlight the lane of the active POV person */
 .lane.pov { background: var(--accent-soft); }
 .lane.pov .tl-label { background: var(--accent-soft); }
-/* live local-time chip — lives in the sticky label so it's always visible */
-.live { font-family: var(--font-mono); font-size: .64rem; font-weight: 700; padding: 0 5px; margin-left: 4px;
-  background: var(--bg-3); color: var(--muted); border: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
-.live.working { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+/* live local-time chip — rides the vertical scrubber line at each person's row */
+.live { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none;
+  font-family: var(--font-mono); font-size: .6rem; font-weight: 700; padding: 1px 4px; white-space: nowrap;
+  background: var(--bg-2); color: var(--text); border: 1px solid var(--line-strong); box-shadow: 0 1px 3px rgba(0,0,0,.22); }
+.live.working { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.live:empty { display: none; }
 
 .marker { position: absolute; top: 0; bottom: 0; width: 2px; z-index: 5; }
 .marker.now { background: var(--now); opacity: .65; pointer-events: none; }

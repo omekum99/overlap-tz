@@ -410,13 +410,12 @@ function renderLanes() {
         <span class="dot" style="background:${colorOf(m)}"></span>
         <button class="lane-expand ${isExpanded ? 'expanded' : ''}" data-expand="${gi}" title="Toggle details">${expandIcon}</button>
         <div class="who">
-          <div class="name">${esc(m.name)}${off ? ' <span class="tag-off">off</span>' : ''}
-            <span class="live mono" id="live-${gi}" title="Their local time at the scrubber">—</span></div>
+          <div class="name">${esc(m.name)}${off ? ' <span class="tag-off">off</span>' : ''}</div>
           <div class="meta">${esc(labelForTz(m.tz))} · ${hoursLabel(m)} · <span class="mono">${offset}</span></div>
         </div>
         <button class="lane-tz ${gi === povPerson ? 'active' : ''}" data-ltz="${esc(m.tz)}" data-gi="${gi}" title="${gi === povPerson ? esc(m.name) + "'s view — click to reset" : 'View board from ' + esc(m.name) + "'s perspective"}">⌖</button>
       </div>
-      <div class="tl-track work${dayNight ? ' dn' : ''}"${trackStyle}>${dn}${bands}${handles}</div>`;
+      <div class="tl-track work${dayNight ? ' dn' : ''}"${trackStyle}>${dn}${bands}${handles}<span class="live mono" id="live-${gi}"></span></div>`;
     wrap.appendChild(row);
 
     if (isExpanded) {
@@ -603,16 +602,19 @@ function renderBlocks() {
 
 function updateScrub(g = scrubGlobal()) {
   const dayIdx = gToDay(g), hourWithin = g % 24, dayISO = winDayISO(dayIdx);
+  const leftPct = g / TOTAL_H * 100;
   const dateStr = DateTime.fromISO(dayISO).toFormat('ccc dd LLL');
   const povLabel = povPerson >= 0 && state.members[povPerson]
     ? esc(state.members[povPerson].name) + "'s view"
     : esc(labelForTz(homeTz));
   $('scrubReadout').innerHTML = `<b>${esc(dateStr)}</b> · ${hourLabel(hourWithin)} · ${povLabel}`;
+  // Each teammate's local time rides on the scrubber line at their row.
   for (const { m, gi } of visibleEntries()) {
     const el = $('live-' + gi);
     if (!el) continue;
     const { label, working } = localAt(hourWithin, m, dayISO, homeTz);
     el.textContent = label;
+    el.style.left = leftPct + '%';
     el.classList.toggle('working', working);
   }
 }
